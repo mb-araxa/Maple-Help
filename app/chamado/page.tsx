@@ -82,7 +82,6 @@ export default function ChamadoPage() {
           </div>
           
           <ChamadoForm 
-            area="ti"
             categorias={categoriasTI}
             onSubmitSuccess={() => setShowSuccess(true)}
             abrirChamadoAction={abrirChamado}

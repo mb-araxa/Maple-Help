@@ -1,21 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { extractFirstName } from '@/lib/utils';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { useToast } from '@/components/ToastProvider';
-import { obterChamadosAbertos, obterChamadosConcluidosHoje, assumirChamado, finalizarChamado, deletarChamado } from '../actions/chamados';
+import { obterChamadosAbertos, obterChamadosConcluidosHoje, assumirChamado, finalizarChamado, deletarChamado } from '@/app/actions/chamados';
 import { Chamado } from '@/types/database';
 import { ChamadoCard } from '@/components/ChamadoCard';
 import { ChamadoModal } from '@/components/ChamadoModal';
-import { useCallback } from 'react';
 import { Button } from '@/components/ui/Button';
 
 // O AudioContext precisa ser global e persistente para tocar em abas fora de foco (segundo plano)
 let globalAudioCtx: AudioContext | null = null;
-
 
 export default function Dashboard() {
   usePageTitle('Painel ADM');
@@ -48,16 +46,13 @@ export default function Dashboard() {
     try {
       if (!globalAudioCtx) return;
       
-      // Função auxiliar para criar um bipe individual
       const playBeep = (startTime: number) => {
         const oscillator = globalAudioCtx!.createOscillator();
         const gainNode = globalAudioCtx!.createGain();
         
-        // Onda quadrada (square) é mais estridente e corta barulhos de fundo
         oscillator.type = 'square';
-        oscillator.frequency.value = 2500; // Frequência alta para chamar atenção
+        oscillator.frequency.value = 2500;
         
-        // Sobe rápido, toca por 100ms e desce rápido
         gainNode.gain.setValueAtTime(0, startTime);
         gainNode.gain.linearRampToValueAtTime(0.2, startTime + 0.01);
         gainNode.gain.linearRampToValueAtTime(0, startTime + 0.15);
@@ -70,7 +65,6 @@ export default function Dashboard() {
       };
 
       const now = globalAudioCtx.currentTime;
-      // Toca 3 bipes bem rápidos e curtos (padrão de alerta clássico)
       playBeep(now);
       playBeep(now + 0.2);
       playBeep(now + 0.4);
@@ -83,9 +77,11 @@ export default function Dashboard() {
   useEffect(() => {
     // Inicializa o AudioContext global uma única vez
     if (typeof window !== 'undefined' && !globalAudioCtx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      globalAudioCtx = new AudioContextClass();
+      const windowWithWebkit = window as unknown as { AudioContext: typeof AudioContext; webkitAudioContext: typeof AudioContext };
+      const AudioContextClass = windowWithWebkit.AudioContext || windowWithWebkit.webkitAudioContext;
+      if (AudioContextClass) {
+        globalAudioCtx = new AudioContextClass();
+      }
     }
 
     // Desbloqueia o áudio permanentemente na primeira interação do usuário na página
@@ -117,7 +113,6 @@ export default function Dashboard() {
         { event: '*', schema: 'public', table: 'chamados' },
         (payload) => {
           fetchChamados();
-          // Tocar som apenas se for um NOVO chamado
           if (payload.eventType === 'INSERT') {
             playNotificationSound();
           }
@@ -137,7 +132,6 @@ export default function Dashboard() {
       await assumirChamado(id);
       await fetchChamados();
       
-      // Atualiza o modal aberto se necessário
       setChamadoSelecionado(prev => prev ? { ...prev, status: 'Em Andamento', responsavel: adminName } : null);
       addToast(`Chamado assumido por ${adminName}.`, 'success');
     } catch (error: unknown) {
@@ -150,7 +144,7 @@ export default function Dashboard() {
     try {
       await finalizarChamado(id, resolucao, tempo_gasto);
       await fetchChamados();
-      setChamadoSelecionado(null); // Fecha o modal após concluir
+      setChamadoSelecionado(null);
       addToast('Chamado concluído com sucesso!', 'success');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erro ao concluir chamado.';
@@ -178,7 +172,6 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
-        {/* Skeleton do cabeçalho */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <div className="h-8 w-64 bg-surface-muted rounded-lg animate-pulse mb-2" />
@@ -187,7 +180,6 @@ export default function Dashboard() {
           <div className="h-10 w-36 bg-surface-muted rounded-lg animate-pulse" />
         </div>
 
-        {/* Skeleton do Kanban (#10) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[0, 1, 2].map((col) => (
             <div key={col} className="flex flex-col bg-surface-muted rounded-2xl p-4 border border-border">
@@ -218,7 +210,7 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-text tracking-tight">Painel de Administração</h1>
-          <p className="text-text-muted mt-1">Gestão de chamados de TI e Manutenção em tempo real.</p>
+          <p className="text-text-muted mt-1">Gestão de chamados de TI em tempo real.</p>
         </div>
         
         <Button 

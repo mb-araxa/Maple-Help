@@ -1,8 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use server';
 
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { z } from 'zod';
+import { extractFirstName, getAdminEmails } from '@/lib/utils';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 import { Chamado } from '@/types/database';
 
 async function getSupabase() {
@@ -30,12 +33,6 @@ async function getSupabase() {
   );
 }
 
-import { headers } from 'next/headers';
-import { z } from 'zod';
-// import { extractFirstName, getAdminEmails } from '@/lib/utils';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
-
 // Configuração do Rate Limit (Upstash Redis)
 const redis = (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
   ? new Redis({
@@ -45,7 +42,7 @@ const redis = (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_R
   : null;
 
 // Fallback de memória para dev local
-const rateLimitMap = new Map<string, { count: number, lastReset: number }>();
+const rateLimitMap = new Map<string, { count: number; lastReset: number }>();
 const RATE_LIMIT = 5; // Máximo de chamados
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // a cada 10 minutos
 
@@ -55,39 +52,52 @@ const ratelimit = redis ? new Ratelimit({
   limiter: Ratelimit.slidingWindow(RATE_LIMIT, '10 m'),
 }) : null;
 
-import { 
-  requireAdmin, 
-  requireTechnicianOrAdmin, 
-  requireAuthenticatedUser
-} from '@/app/actions/auth';
+/**
+ * Validação de usuário e permissão de administrador na Server Action.
+ * Lança erro caso não seja administrador. Retorna os dados da sessão/usuário.
+ */
+async function requireAdmin() {
+  const supabase = await getSupabase();
+  const { data: { session }, error } = await supabase.auth.getSession();
+  
+  if (error || !session) {
+    throw new Error('Usuário não autenticado.');
+  }
+
+  const email = session.user.email;
+  if (!email || !getAdminEmails().includes(email.toLowerCase())) {
+    throw new Error('Acesso negado: você não tem permissão de administrador.');
+  }
+
+  return { session, email, nome: extractFirstName(email) };
+}
+
+/**
+ * Verifica se o usuário logado é administrador.
+ * Usado pelo frontend (Menu) para ocultar botões de forma segura sem expor a lista no client.
+ */
+export async function checkIsAdmin(): Promise<boolean> {
+  try {
+    const supabase = await getSupabase();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.email) return false;
+    return getAdminEmails().includes(session.user.email.toLowerCase());
+  } catch {
+    return false;
+  }
+}
 
 const abrirChamadoSchema = z.object({
   solicitante: z.string().min(1, 'Solicitante é obrigatório.').max(100),
   local: z.string().min(1, 'Local é obrigatório.').max(150),
   categoria: z.string().min(1, 'Categoria é obrigatória.').max(50),
   descricao: z.string().min(10, 'A descrição deve ter pelo menos 10 caracteres.').max(1000),
-  area: z.enum(['ti', 'manutencao']).default('ti'),
-  priority: z.enum(['baixa', 'normal', 'alta', 'critica']).default('normal'),
   anexo_url: z.string().optional().or(z.literal('')),
 });
 
-function calcularSLA(priority: 'baixa' | 'normal' | 'alta' | 'critica'): Date {
-  const data = new Date();
-  if (priority === 'critica') {
-    data.setHours(data.getHours() + 4);
-  } else if (priority === 'alta') {
-    data.setDate(data.getDate() + 1);
-  } else if (priority === 'normal') {
-    data.setDate(data.getDate() + 3);
-  } else if (priority === 'baixa') {
-    data.setDate(data.getDate() + 5);
-  }
-  return data;
-}
-
 /**
  * Cria um novo chamado no sistema.
- * @param dados Dados do chamado (solicitante, local, categoria, descricao, area, priority).
+ * @param dados Dados do chamado (solicitante, local, categoria, descricao, anexo_url).
  * @returns O chamado recém-criado.
  */
 export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resolucao' | 'data_criacao' | 'data_resolucao' | 'responsavel' | 'tempo_gasto'>) {
@@ -95,57 +105,51 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
     // Rate Limiting (Limite de taxa)
     const reqHeaders = await headers();
     let ip = reqHeaders.get('x-forwarded-for') || '127.0.0.1';
-    // Se vier uma lista de IPs separada por vírgula, pegamos o primeiro
     ip = ip.split(',')[0].trim();
     
     if (ratelimit) {
-      const { success } = await ratelimit.limit(`ratelimit_chamados_${ip}`);
+      const { success } = await ratelimit.limit(`ratelimit_${ip}`);
       if (!success) {
-        throw new Error('Você atingiu o limite de envio. Tente novamente em alguns minutos.');
+        throw new Error('Muitas solicitações. Aguarde alguns minutos antes de tentar novamente.');
       }
     } else {
-      // Fallback em memória (para uso local)
       const now = Date.now();
-      const rateRecord = rateLimitMap.get(ip);
+      const userLimit = rateLimitMap.get(ip);
       
-      if (rateRecord && now - rateRecord.lastReset < RATE_LIMIT_WINDOW_MS) {
-        if (rateRecord.count >= RATE_LIMIT) {
-          throw new Error('Você atingiu o limite de envio. Tente novamente em alguns minutos.');
-        }
-        rateRecord.count += 1;
-      } else {
+      if (!userLimit || (now - userLimit.lastReset > RATE_LIMIT_WINDOW_MS)) {
         rateLimitMap.set(ip, { count: 1, lastReset: now });
+      } else {
+        if (userLimit.count >= RATE_LIMIT) {
+          throw new Error('Muitas solicitações. Aguarde alguns minutos antes de tentar novamente.');
+        }
+        userLimit.count += 1;
       }
     }
 
-    // 1. Validação de Dados com Zod
+    // Validação com Zod
     const dadosValidados = abrirChamadoSchema.parse(dados);
 
     const supabase = await getSupabase();
     
-    // Recupera o ID do usuário logado (se houver)
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id;
-    
-    const dueAt = calcularSLA(dadosValidados.priority).toISOString();
+    let userId: string | undefined = undefined;
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData.session?.user) {
+      userId = sessionData.session.user.id;
+    }
 
-    // Status será salvo como 'Pendente' para alinhar com a estrutura do BD.
+    const payload = {
+      solicitante: dadosValidados.solicitante,
+      local: dadosValidados.local,
+      categoria: dadosValidados.categoria,
+      descricao: dadosValidados.descricao,
+      status: 'Pendente',
+      anexo_url: dadosValidados.anexo_url || null,
+      ...(userId ? { user_id: userId } : {})
+    };
+
     const { data, error } = await supabase
       .from('chamados')
-      .insert([
-        { 
-          solicitante: dadosValidados.solicitante, 
-          local: dadosValidados.local, 
-          categoria: dadosValidados.categoria, 
-          descricao: dadosValidados.descricao,
-          area: dadosValidados.area,
-          priority: dadosValidados.priority,
-          due_at: dueAt,
-          anexo_url: dadosValidados.anexo_url,
-          status: 'Pendente',
-          ...(userId ? { user_id: userId } : {})
-        }
-      ])
+      .insert([payload])
       .select()
       .single();
 
@@ -153,27 +157,17 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
       throw error;
     }
 
-    // Criar evento inicial
-    await supabase.from('chamado_eventos').insert([
-      {
-        chamado_id: data.id,
-        actor_id: userId || null,
-        event_type: 'criacao',
-        description: 'Chamado criado pelo solicitante.',
-      }
-    ]);
-
     return data as Chamado;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em abrirChamado:', error);
-    throw new Error(`Não foi possível abrir o chamado: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao abrir chamado';
+    throw new Error(message);
   }
 }
 
 /**
- * Retorna todos os chamados onde o status seja diferente de 'Concluído'.
- * Acesso exclusivo para administradores.
- * @returns Lista de chamados pendentes/abertos.
+ * Busca todos os chamados que ainda não foram concluídos (status 'Pendente' ou 'Em Andamento').
+ * @returns Lista de chamados em aberto ordenados pelo mais antigo.
  */
 export async function obterChamadosAbertos() {
   try {
@@ -183,9 +177,11 @@ export async function obterChamadosAbertos() {
       .from('chamados')
       .select('*')
       .neq('status', 'Concluído')
-      .order('data_criacao', { ascending: false });
+      .order('data_criacao', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     const chamados = data as Chamado[];
     for (const c of chamados) {
@@ -196,35 +192,36 @@ export async function obterChamadosAbertos() {
     }
 
     return chamados;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em obterChamadosAbertos:', error);
-    throw new Error(`Não foi possível carregar os chamados abertos: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao carregar chamados abertos';
+    throw new Error(`Não foi possível carregar os chamados abertos: ${message}`);
   }
 }
 
 /**
- * Retorna os últimos chamados concluídos hoje.
- * Acesso exclusivo para administradores.
- * @returns Lista limitada de chamados concluídos no dia atual.
+ * Busca os chamados concluídos na data de HOJE.
+ * Útil para acompanhamento diário no painel de chamados.
+ * @returns Lista de chamados concluídos hoje.
  */
 export async function obterChamadosConcluidosHoje() {
   try {
     await requireAdmin();
     const supabase = await getSupabase();
     
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const dataInicioHoje = hoje.toISOString();
-    
+    const hojeInicio = new Date();
+    hojeInicio.setHours(0, 0, 0, 0);
+
     const { data, error } = await supabase
       .from('chamados')
       .select('*')
       .eq('status', 'Concluído')
-      .gte('data_resolucao', dataInicioHoje)
-      .order('data_resolucao', { ascending: false })
-      .limit(20);
+      .gte('data_resolucao', hojeInicio.toISOString())
+      .order('data_resolucao', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     const chamados = data as Chamado[];
     for (const c of chamados) {
@@ -235,24 +232,20 @@ export async function obterChamadosConcluidosHoje() {
     }
 
     return chamados;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em obterChamadosConcluidosHoje:', error);
-    throw new Error(`Não foi possível carregar os chamados concluídos de hoje: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao carregar chamados de hoje';
+    throw new Error(`Não foi possível carregar os chamados concluídos de hoje: ${message}`);
   }
 }
 
 /**
- * Retorna os chamados concluídos filtrados por mês/ano.
- * Ideal para exibição de relatórios gerenciais.
- * @param mes Mês (1 a 12).
- * @param ano Ano.
- * @returns Lista de chamados concluídos no período especificado.
+ * Retorna os chamados concluídos filtrados por mês/ano com paginação.
  */
 export async function obterChamadosConcluidos(mes: number, ano: number, page: number = 1, limit: number = 50) {
   try {
     await requireAdmin();
     const supabase = await getSupabase();
-    // Definimos o início e fim do mês para criar o range de datas
     const dataInicio = new Date(ano, mes - 1, 1).toISOString();
     const dataFim = new Date(ano, mes, 1).toISOString();
     
@@ -263,8 +256,8 @@ export async function obterChamadosConcluidos(mes: number, ano: number, page: nu
       .from('chamados')
       .select('*', { count: 'exact' })
       .eq('status', 'Concluído')
-      .gte('data_resolucao', dataInicio) // Maior ou igual ao início do mês
-      .lt('data_resolucao', dataFim)     // Menor que o primeiro dia do próximo mês
+      .gte('data_resolucao', dataInicio)
+      .lt('data_resolucao', dataFim)
       .order('data_resolucao', { ascending: false })
       .range(from, to);
 
@@ -282,9 +275,10 @@ export async function obterChamadosConcluidos(mes: number, ano: number, page: nu
       data: chamados, 
       count: count || 0 
     };
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em obterChamadosConcluidos:', error);
-    throw new Error(`Não foi possível carregar o relatório de concluídos: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao carregar relatório';
+    throw new Error(`Não foi possível carregar o relatório de concluídos: ${message}`);
   }
 }
 
@@ -312,9 +306,10 @@ export async function obterTodosChamadosConcluidos(mes: number, ano: number) {
     }
 
     return data as Chamado[];
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em obterTodosChamadosConcluidos:', error);
-    throw new Error(`Não foi possível carregar os dados para exportação: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao carregar dados';
+    throw new Error(`Não foi possível carregar os dados para exportação: ${message}`);
   }
 }
 
@@ -324,29 +319,22 @@ const tempoGastoSchema = z.string().min(1, 'O tempo gasto é obrigatório.').max
 
 /**
  * Finaliza um chamado atualizando o status, a resolução e data/hora atual.
- * @param id ID (uuid) do chamado.
- * @param resolucao Texto informando como o chamado foi concluído.
- * @param tempo_gasto O tempo gasto no chamado.
- * @returns O chamado atualizado.
  */
 export async function finalizarChamado(id: string, resolucao: string, tempo_gasto: string) {
   try {
-    const profile = await requireTechnicianOrAdmin();
+    await requireAdmin();
     uuidSchema.parse(id);
     resolucaoSchema.parse(resolucao);
     tempoGastoSchema.parse(tempo_gasto);
 
     const supabase = await getSupabase();
-    const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('chamados')
       .update({ 
         status: 'Concluído', 
         resolucao,
         tempo_gasto,
-        data_resolucao: now,
-        closed_at: now,
-        closed_by: profile.id
+        data_resolucao: new Date().toISOString()
       })
       .eq('id', id)
       .select()
@@ -356,39 +344,28 @@ export async function finalizarChamado(id: string, resolucao: string, tempo_gast
       throw error;
     }
 
-    await supabase.from('chamado_eventos').insert([{
-      chamado_id: data.id,
-      actor_id: profile.id,
-      event_type: 'concluido',
-      description: 'Chamado concluído.'
-    }]);
-
     return data as Chamado;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em finalizarChamado:', error);
-    throw new Error(`Não foi possível finalizar o chamado: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao finalizar';
+    throw new Error(`Não foi possível finalizar o chamado: ${message}`);
   }
 }
 
 /**
  * Altera o status do chamado para 'Em Andamento' indicando que alguém assumiu a tarefa.
- * @param id ID (uuid) do chamado.
- * @returns O chamado atualizado.
  */
 export async function assumirChamado(id: string) {
   try {
-    const profile = await requireTechnicianOrAdmin();
+    const { nome: responsavel } = await requireAdmin();
     uuidSchema.parse(id);
 
     const supabase = await getSupabase();
-    const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('chamados')
       .update({ 
         status: 'Em Andamento',
-        assigned_to: profile.id,
-        assigned_at: now,
-        responsavel: profile.full_name || 'Técnico'
+        responsavel 
       })
       .eq('id', id)
       .select()
@@ -398,69 +375,16 @@ export async function assumirChamado(id: string) {
       throw error;
     }
 
-    await supabase.from('chamado_eventos').insert([{
-      chamado_id: data.id,
-      actor_id: profile.id,
-      event_type: 'assumido',
-      description: `Chamado assumido por ${profile.full_name || 'Técnico'}.`
-    }]);
-
     return data as Chamado;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em assumirChamado:', error);
-    throw new Error(`Não foi possível assumir o chamado: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao assumir';
+    throw new Error(`Não foi possível assumir o chamado: ${message}`);
   }
 }
 
 /**
- * Reabre um chamado que já estava concluído.
- * @param id ID do chamado
- * @param motivo Motivo da reabertura
- */
-export async function reabrirChamado(id: string, motivo: string) {
-  try {
-    const profile = await requireAuthenticatedUser();
-    uuidSchema.parse(id);
-    z.string().min(10, 'O motivo deve ter pelo menos 10 caracteres.').parse(motivo);
-
-    const supabase = await getSupabase();
-    
-    // Check permission
-    const { data: chamado } = await supabase.from('chamados').select('*').eq('id', id).single();
-    if (!chamado) throw new Error('Chamado não encontrado.');
-    if (chamado.user_id !== profile.id && profile.role !== 'admin') {
-      throw new Error('Sem permissão para reabrir este chamado.');
-    }
-    
-    const { data, error } = await supabase
-      .from('chamados')
-      .update({ 
-        status: 'Reaberto',
-        reopened_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    await supabase.from('chamado_eventos').insert([{
-      chamado_id: data.id,
-      actor_id: profile.id,
-      event_type: 'reaberto',
-      description: `Chamado reaberto. Motivo: ${motivo}`
-    }]);
-
-    return data as Chamado;
-  } catch (error: any) {
-    console.error('Erro em reabrirChamado:', error);
-    throw new Error(`Não foi possível reabrir o chamado: ${error.message}`);
-  }
-}
-
-/**
- * Exclui um chamado do banco de dados (Útil para testes).
- * @param id ID (uuid) do chamado.
+ * Exclui um chamado do banco de dados.
  */
 export async function deletarChamado(id: string) {
   try {
@@ -477,9 +401,10 @@ export async function deletarChamado(id: string) {
     }
     
     return true;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em deletarChamado:', error);
-    throw new Error(`Não foi possível deletar o chamado: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao deletar';
+    throw new Error(`Não foi possível deletar o chamado: ${message}`);
   }
 }
 
@@ -491,15 +416,13 @@ export async function obterMeusChamados() {
   try {
     const supabase = await getSupabase();
     
-    // Pega o usuário atual
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData.session) {
       throw new Error('Usuário não autenticado.');
     }
     
-    const userId = user.id;
+    const userId = sessionData.session.user.id;
 
-    // Busca apenas os chamados onde user_id bate com o usuário atual
     const { data, error } = await supabase
       .from('chamados')
       .select('*')
@@ -507,7 +430,7 @@ export async function obterMeusChamados() {
       .order('data_criacao', { ascending: false });
 
     if (error) {
-      if (error.code === '42703') { // Column does not exist
+      if (error.code === '42703') {
          console.warn("A coluna user_id não existe no banco. Os dados retornarão vazios.");
          return [] as Chamado[];
       }
@@ -523,22 +446,21 @@ export async function obterMeusChamados() {
     }
 
     return chamados;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em obterMeusChamados:', error);
-    throw new Error(`Não foi possível carregar seus chamados: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao carregar meus chamados';
+    throw new Error(`Não foi possível carregar seus chamados: ${message}`);
   }
 }
 
 /**
- * Busca todos os chamados criados em um determinado mês e ano, 
- * independentemente do status, para alimentar gráficos estatísticos.
+ * Busca todos os chamados criados em um determinado mês e ano para gráficos/estatísticas.
  */
 export async function obterEstatisticasMensais(mes: number, ano: number) {
   try {
     await requireAdmin();
     const supabase = await getSupabase();
     
-    // Início e fim do mês
     const dataInicio = new Date(ano, mes - 1, 1).toISOString();
     const dataFim = new Date(ano, mes, 1).toISOString();
 
@@ -554,103 +476,9 @@ export async function obterEstatisticasMensais(mes: number, ano: number) {
     }
 
     return data as Chamado[];
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro em obterEstatisticasMensais:', error);
-    throw new Error(`Não foi possível carregar estatísticas: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Erro ao carregar estatísticas';
+    throw new Error(`Não foi possível carregar estatísticas: ${message}`);
   }
 }
-
-export async function obterChamado(id: string) {
-  try {
-    const supabase = await getSupabase();
-    await requireAuthenticatedUser();
-    
-    // RLS will enforce that only requester can see their own, and tech/admin can see all
-    const { data, error } = await supabase
-      .from('chamados')
-      .select('*, profiles!chamados_assigned_to_fkey(full_name, avatar_url, role)')
-      .eq('id', id)
-      .single();
-
-    if (error) throw error;
-    
-    const chamado = data as any;
-    if (chamado.anexo_url && !chamado.anexo_url.startsWith('http')) {
-      const { data: signed } = await supabase.storage.from('chamados-anexos').createSignedUrl(chamado.anexo_url, 3600);
-      if (signed?.signedUrl) chamado.anexo_url = signed.signedUrl;
-    }
-
-    return chamado;
-  } catch (error: any) {
-    console.error('Erro em obterChamado:', error);
-    throw new Error('N�o foi poss�vel carregar o chamado: ' + error.message);
-  }
-}
-
-export async function obterEventos(chamadoId: string) {
-  try {
-    const supabase = await getSupabase();
-    await requireAuthenticatedUser();
-    
-    const { data, error } = await supabase
-      .from('chamado_eventos')
-      .select('*, profiles!chamado_eventos_actor_id_fkey(full_name, avatar_url, role)')
-      .eq('chamado_id', chamadoId)
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-    return data;
-  } catch (error: any) {
-    console.error('Erro em obterEventos:', error);
-    throw new Error('N�o foi poss�vel carregar os eventos: ' + error.message);
-  }
-}
-
-export async function obterMensagens(chamadoId: string) {
-  try {
-    const supabase = await getSupabase();
-    await requireAuthenticatedUser();
-    
-    const { data, error } = await supabase
-      .from('chamado_mensagens')
-      .select('*, profiles!chamado_mensagens_author_id_fkey(full_name, avatar_url, role)')
-      .eq('chamado_id', chamadoId)
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-    return data;
-  } catch (error: any) {
-    console.error('Erro em obterMensagens:', error);
-    throw new Error('N�o foi poss�vel carregar as mensagens: ' + error.message);
-  }
-}
-
-export async function enviarMensagem(chamadoId: string, message: string, isInternal: boolean = false) {
-  try {
-    const profile = await requireAuthenticatedUser();
-    const supabase = await getSupabase();
-    
-    if (isInternal && profile.role === 'requester') {
-      throw new Error('Sem permiss�o para enviar mensagem interna.');
-    }
-
-    const { data, error } = await supabase
-      .from('chamado_mensagens')
-      .insert([{
-        chamado_id: chamadoId,
-        author_id: profile.id,
-        message,
-        is_internal: isInternal
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
-    
-    return data;
-  } catch (error: any) {
-    console.error('Erro em enviarMensagem:', error);
-    throw new Error('N�o foi poss�vel enviar a mensagem: ' + error.message);
-  }
-}
-

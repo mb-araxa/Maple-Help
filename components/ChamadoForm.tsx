@@ -5,17 +5,15 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ToastProvider';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Chamado } from '@/types/database';
 
 interface ChamadoFormProps {
-  area: 'ti' | 'manutencao';
   categorias: string[];
   onSubmitSuccess: () => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  abrirChamadoAction: (data: any) => Promise<any>;
+  abrirChamadoAction: (dados: Omit<Chamado, 'id' | 'status' | 'resolucao' | 'data_criacao' | 'data_resolucao' | 'responsavel' | 'tempo_gasto'>) => Promise<Chamado>;
 }
 
 export function ChamadoForm({
-  area,
   categorias,
   onSubmitSuccess,
   abrirChamadoAction
@@ -73,8 +71,6 @@ export function ChamadoForm({
           local, 
           categoria, 
           descricao, 
-          area,
-          priority: 'normal',
           anexo_url 
         });
       } catch (chamadoError: unknown) {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as chamados from '../app/actions/chamados';
+import { Chamado } from '@/types/database';
 
 // Mocks
 vi.mock('next/headers', () => ({
@@ -15,9 +16,9 @@ vi.mock('next/headers', () => ({
 // Mock do utils
 const mockAdminEmails = ['admin@teste.com'];
 vi.mock('@/lib/utils', () => ({
-  extractFirstName: vi.fn((email) => email.split('@')[0]),
+  extractFirstName: vi.fn((email: string) => email.split('@')[0]),
   getAdminEmails: vi.fn(() => mockAdminEmails),
-  isAdminEmail: vi.fn((email) => mockAdminEmails.includes(email)),
+  isAdminEmail: vi.fn((email: string) => mockAdminEmails.includes(email)),
 }));
 
 // Mock do supabase SSR
@@ -88,15 +89,13 @@ describe('Ações de Chamados (Server Actions)', () => {
     it('deve rejeitar chamado sem solicitante', async () => {
       const dadosInvalidos = { solicitante: '', local: 'Sala 1', categoria: 'TI', descricao: 'O mouse parou de funcionar e preciso de um novo urgentemente.' };
       
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await expect(chamados.abrirChamado(dadosInvalidos as any)).rejects.toThrow();
+      await expect(chamados.abrirChamado(dadosInvalidos as unknown as Chamado)).rejects.toThrow();
     });
 
     it('deve rejeitar chamado com descrição muito curta', async () => {
       const dadosInvalidos = { solicitante: 'João', local: 'Sala 1', categoria: 'TI', descricao: 'Curta' };
       
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await expect(chamados.abrirChamado(dadosInvalidos as any)).rejects.toThrow();
+      await expect(chamados.abrirChamado(dadosInvalidos as unknown as Chamado)).rejects.toThrow();
     });
   });
 

@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { extractFirstName } from '@/lib/utils';
 import { usePageTitle } from '@/lib/usePageTitle';
 import Header from '@/components/Header';
-import { checkIsAdmin } from '../actions/auth';
+import { checkIsAdmin } from '@/app/actions/chamados';
 import { SurfaceCard } from '@/components/ui/SurfaceCard';
 
 export default function HubMenu() {

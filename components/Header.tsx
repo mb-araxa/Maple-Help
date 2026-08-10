@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
-import { NotificationBell } from '@/components/NotificationBell';
 
 interface HeaderProps {
   userName: string;
@@ -28,10 +27,6 @@ export default function Header({ userName }: HeaderProps) {
         
         {/* Lado Direito: Usuário e Sair */}
         <div className="flex items-center gap-4 mt-4 md:mt-0">
-          {/* NotificationBell will be active in Entrega 2 */}
-          {process.env.NEXT_PUBLIC_ENABLE_NOTIFICATIONS === 'true' && (
-            <NotificationBell notifications={[]} />
-          )}
           <span className="text-text-muted font-medium text-sm">
             Olá, {userName}
           </span>

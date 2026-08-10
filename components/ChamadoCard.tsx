@@ -38,17 +38,6 @@ export function ChamadoCard({ chamado, onClick }: ChamadoCardProps) {
         <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-surface-muted text-text border border-border">
           {chamado.categoria}
         </span>
-        <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-          chamado.priority === 'critica' ? 'bg-red-50 text-brand border-brand/20' :
-          chamado.priority === 'alta' ? 'bg-orange-50 text-orange-600 border-orange-200' :
-          chamado.priority === 'baixa' ? 'bg-green-50 text-green-600 border-green-200' :
-          'bg-blue-50 text-blue-600 border-blue-200'
-        }`}>
-          {chamado.priority}
-        </span>
-        <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
-          {chamado.area}
-        </span>
       </div>
 
       <div className="mt-1">
@@ -58,25 +47,13 @@ export function ChamadoCard({ chamado, onClick }: ChamadoCardProps) {
       </div>
       
       <div className="mt-2 pt-3 border-t border-border flex justify-between items-center text-xs text-text-subtle">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <span>Aberto:</span>
-            <span className="font-medium text-text-muted">
-              {new Date(chamado.data_criacao).toLocaleString('pt-BR', {
-                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-              })}
-            </span>
-          </div>
-          {chamado.due_at && chamado.status !== 'Concluído' && chamado.status !== 'Cancelado' && (
-            <div className={`flex items-center gap-2 ${new Date(chamado.due_at) < new Date() ? 'text-brand font-bold' : ''}`}>
-              <span>Prazo:</span>
-              <span className="font-medium">
-                {new Date(chamado.due_at).toLocaleString('pt-BR', {
-                  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-                })}
-              </span>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <span>Aberto:</span>
+          <span className="font-medium text-text-muted">
+            {new Date(chamado.data_criacao).toLocaleString('pt-BR', {
+              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+            })}
+          </span>
         </div>
       </div>
     </SurfaceCard>

@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { ReactNode, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { NotificationBell } from '@/components/NotificationBell';
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -36,9 +35,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <p className="text-text-muted text-sm mt-1 font-medium">Painel Administrativo</p>
           </div>
           <div className="flex items-center gap-2">
-            {process.env.NEXT_PUBLIC_ENABLE_NOTIFICATIONS === 'true' && (
-              <NotificationBell notifications={[]} />
-            )}
             {/* Botão fechar — mobile only */}
             <button
               onClick={() => setSidebarOpen(false)}

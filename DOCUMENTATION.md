@@ -1,69 +1,66 @@
-﻿# Documentação do Projeto: Maple Help
+# Documentação do Projeto: Maple Help
 
-## Testes Manuais de RLS (Homologação)
+Sistema de Chamados e Suporte TI simples, moderno e responsivo.
 
-Para garantir que o Row Level Security (RLS) esteja funcionando perfeitamente, siga este roteiro no painel do Supabase do seu ambiente de homologação, utilizando a aba **SQL Editor** ou impersonificando usuários.
+## Visão Geral
 
-### Pré-requisitos
-Tenha 3 usuários de teste cadastrados no Supabase Auth:
-- `user_solicitante@teste.com` (Papel: `requester`)
-- `user_tecnico@teste.com` (Papel: `technician`)
-- `user_admin@teste.com` (Papel: `admin`)
+O **Maple Help** permite que professores e colaboradores da escola abram solicitações de suporte de TI de forma rápida, com upload de anexos de imagem. A equipe de administração gerencia os chamados em tempo real através de um painel Kanban (`Pendente`, `Em Andamento`, `Concluído`) e gera relatórios estatísticos com exportação em planilha Excel (`.xlsx`).
 
-### Cenário 1: Isolamento de Chamados (Solicitante)
-1. Faça login como `user_solicitante@teste.com` (ou simule o token JWT).
-2. Tente consultar a tabela `chamados`:
-   ```sql
-   select * from chamados;
+---
+
+## Estrutura do Sistema
+
+- **Login (`/`)**: Autenticação via Supabase Auth.
+- **Menu (`/menu`)**: Central principal de navegação do usuário.
+- **Abrir Chamado (`/chamado`)**: Formulário para envio de solicitações de TI com upload de imagens.
+- **Meus Chamados (`/chamado/meus-chamados`)**: Acompanhamento dos chamados abertos pelo usuário logado.
+- **Painel Administrativo (`/adm`)**: Fila de chamados em tempo real (Kanban), com ações de assumir e finalizar chamados com notas de solução e tempo gasto.
+- **Relatórios (`/adm/relatorios`)**: Filtro por mês/ano, gráficos estatísticos e exportação completa em Excel.
+
+---
+
+## Configuração de Ambiente
+
+Crie um arquivo `.env.local` na raiz do projeto com as seguintes variáveis de ambiente:
+
+```env
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://sua-instancia.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima
+
+# Admins (separados por vírgula)
+ADMIN_EMAILS=admin1@escola.com.br,admin2@escola.com.br
+
+# Rate Limit (Opcional - Upstash Redis)
+UPSTASH_REDIS_REST_URL=https://seu-redis.upstash.io
+UPSTASH_REDIS_REST_TOKEN=seu_token_upstash
+```
+
+---
+
+## Como Executar o Projeto
+
+1. Instalar as dependências:
+   ```bash
+   npm install
    ```
-3. **Resultado Esperado:** Apenas os chamados criados por este `user_id` devem ser retornados. Chamados de outros solicitantes não devem aparecer.
 
-### Cenário 2: Visão Global (Técnico e Admin)
-1. Faça login como `user_tecnico@teste.com` ou `user_admin@teste.com`.
-2. Consulte a tabela `chamados`:
-   ```sql
-   select * from chamados;
+2. Executar em modo de desenvolvimento:
+   ```bash
+   npm run dev
    ```
-3. **Resultado Esperado:** Todos os chamados do sistema devem ser listados.
 
-### Cenário 3: Privacidade de Mensagens Internas
-1. Como `user_admin@teste.com`, crie uma mensagem em um chamado qualquer definindo `is_internal = true`.
-2. Como `user_solicitante@teste.com` (dono do chamado), tente consultar a tabela `chamado_mensagens`:
-   ```sql
-   select * from chamado_mensagens where chamado_id = 'ID_DO_CHAMADO';
+3. Validar tipagem TypeScript:
+   ```bash
+   npx tsc --noEmit
    ```
-3. **Resultado Esperado:** A mensagem interna **NÃO** deve ser retornada. Apenas mensagens públicas (`is_internal = false`).
 
-### Cenário 4: Segurança de Uploads (Storage)
-1. Como `user_solicitante@teste.com`, tente listar objetos do bucket `chamados-anexos` em pastas de outros usuários:
-   - A resposta da API deve retornar vazio ou negado (devido à política do RLS baseada em `auth.uid() = foldername[1]`).
-2. Como admin ou técnico, a listagem/leitura em qualquer subpasta do bucket `chamados-anexos` deve ser permitida.
-
-### Cenário 5: Proteção contra Mudança de Papel (Role)
-1. Como `user_solicitante@teste.com`, tente executar um UPDATE no próprio perfil:
-   ```sql
-   update profiles set role = 'admin' where id = auth.uid();
+4. Executar os testes unitários:
+   ```bash
+   npm run test
    ```
-2. **Resultado Esperado:** A trigger `protect_role_update` deve reverter a role silenciosamente ou a query passará sem alterar a coluna `role` real, pois o usuário não é `admin`.
 
-## Integra��o de E-mails (Resend) - Prepara��o Entrega 2
-
-A **Entrega 2** introduzir� notifica��es via e-mail utilizando a plataforma [Resend](https://resend.com).
-
-### Pr�-requisitos
-1. Uma conta no Resend.
-2. Um dom�nio verificado no painel do Resend (ex: maplebeararaxa.com.br). O envio por dom�nios n�o verificados s� � permitido para o pr�prio e-mail da conta do Resend.
-
-### Vari�veis de Ambiente Necess�rias
-Adicione a seguinte vari�vel no seu .env.local (e no ambiente de produ��o da Vercel):
-\\\env
-RESEND_API_KEY=re_xxxxxxxxxxxxxxxxx
-NEXT_PUBLIC_APP_URL=https://seu-dominio.com.br
-\\\
-*(A NEXT_PUBLIC_APP_URL � essencial para montar os links nos bot�es do e-mail apontando para os detalhes do chamado).*
-
-### Fluxo de Envio Ass�ncrono
-1. Ao mudar o status ou adicionar uma mensagem num chamado, a *Server Action* invoca o m�todo de envio (ainda a ser implementado).
-2. O envio de e-mails ocorrer� de forma **n�o-bloqueante**, para n�o atrasar a resposta da interface ao usu�rio.
-3. Os templates de e-mail ser�o constru�dos usando React Email ou templates HTML puros da pr�pria plataforma Resend.
-
+5. Construir o bundle de produção:
+   ```bash
+   npm run build
+   ```
