@@ -11,6 +11,7 @@ import { Chamado } from '@/types/database';
 import { ChamadoCard } from '@/components/ChamadoCard';
 import { ChamadoModal } from '@/components/ChamadoModal';
 import { useCallback } from 'react';
+import { Button } from '@/components/ui/Button';
 
 // O AudioContext precisa ser global e persistente para tocar em abas fora de foco (segundo plano)
 let globalAudioCtx: AudioContext | null = null;
@@ -82,6 +83,7 @@ export default function Dashboard() {
   useEffect(() => {
     // Inicializa o AudioContext global uma única vez
     if (typeof window !== 'undefined' && !globalAudioCtx) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       globalAudioCtx = new AudioContextClass();
     }
@@ -105,6 +107,7 @@ export default function Dashboard() {
     };
     getSession();
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchChamados();
 
     const channel = supabase
@@ -174,35 +177,32 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-50 p-8">
-        {/* Skeleton do botão Voltar */}
-        <div className="mb-6 h-5 w-40 bg-zinc-200 rounded animate-pulse" />
-        
+      <div className="flex flex-col gap-6">
         {/* Skeleton do cabeçalho */}
-        <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <div className="h-8 w-64 bg-zinc-200 rounded-lg animate-pulse mb-2" />
-            <div className="h-4 w-80 bg-zinc-200 rounded animate-pulse" />
+            <div className="h-8 w-64 bg-surface-muted rounded-lg animate-pulse mb-2" />
+            <div className="h-4 w-80 bg-surface-muted rounded animate-pulse" />
           </div>
-          <div className="h-10 w-36 bg-zinc-200 rounded-lg animate-pulse" />
+          <div className="h-10 w-36 bg-surface-muted rounded-lg animate-pulse" />
         </div>
 
         {/* Skeleton do Kanban (#10) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[0, 1, 2].map((col) => (
-            <div key={col} className="flex flex-col bg-zinc-100/50 rounded-2xl p-4 border border-zinc-200">
+            <div key={col} className="flex flex-col bg-surface-muted rounded-2xl p-4 border border-border">
               <div className="flex items-center gap-2 mb-4 px-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-zinc-300 animate-pulse" />
-                <div className="h-5 w-28 bg-zinc-300 rounded animate-pulse" />
+                <div className="w-2.5 h-2.5 rounded-full bg-border animate-pulse" />
+                <div className="h-5 w-28 bg-border rounded animate-pulse" />
               </div>
               <div className="flex flex-col gap-3">
                 {[0, 1].map((card) => (
-                  <div key={card} className="bg-white p-4 rounded-2xl border border-zinc-200 animate-pulse">
-                    <div className="h-4 w-32 bg-zinc-200 rounded mb-2" />
-                    <div className="h-3 w-24 bg-zinc-200 rounded mb-3" />
-                    <div className="h-6 w-20 bg-zinc-200 rounded-full mb-3" />
-                    <div className="h-3 w-full bg-zinc-200 rounded mb-1" />
-                    <div className="h-3 w-3/4 bg-zinc-200 rounded" />
+                  <div key={card} className="bg-surface p-4 rounded-2xl border border-border animate-pulse">
+                    <div className="h-4 w-32 bg-surface-muted rounded mb-2" />
+                    <div className="h-3 w-24 bg-surface-muted rounded mb-3" />
+                    <div className="h-6 w-20 bg-surface-muted rounded-full mb-3" />
+                    <div className="h-3 w-full bg-surface-muted rounded mb-1" />
+                    <div className="h-3 w-3/4 bg-surface-muted rounded" />
                   </div>
                 ))}
               </div>
@@ -214,46 +214,37 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 p-8">
-      <button 
-        onClick={() => router.push('/menu')}
-        className="mb-6 flex items-center text-zinc-500 hover:text-zinc-900 transition-colors font-medium text-sm gap-2"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-        </svg>
-        Voltar para o Menu
-      </button>
-
-      <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-zinc-900 tracking-tight">Painel de Administração</h1>
-          <p className="text-zinc-500 mt-1">Gestão de chamados de TI e Manutenção em tempo real.</p>
+          <h1 className="text-3xl font-bold text-text tracking-tight">Painel de Administração</h1>
+          <p className="text-text-muted mt-1">Gestão de chamados de TI e Manutenção em tempo real.</p>
         </div>
         
-        <button 
+        <Button 
           onClick={() => router.push('/adm/relatorios')}
-          className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-white px-5 py-2.5 rounded-lg font-medium transition-colors shadow-sm shrink-0"
+          variant="secondary"
+          className="flex items-center gap-2 shrink-0"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
           </svg>
           Ver Relatórios
-        </button>
+        </Button>
       </div>
       
       {/* Kanban Board */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
         {/* Coluna Pendentes */}
-        <div className="flex flex-col bg-zinc-100/50 rounded-2xl p-4 border border-zinc-200 shadow-inner">
+        <div className="flex flex-col bg-surface-muted rounded-2xl p-4 border border-border shadow-sm">
           <div className="flex items-center gap-2 mb-4 px-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-[#E31837]" />
-            <h2 className="font-bold text-zinc-800">Pendentes ({pendentes.length})</h2>
+            <div className="w-2.5 h-2.5 rounded-full bg-status-pending-bg" />
+            <h2 className="font-bold text-text">Pendentes ({pendentes.length})</h2>
           </div>
           <div className="flex flex-col gap-3 overflow-y-auto max-h-[70vh] pb-4">
             {pendentes.length === 0 ? (
-              <p className="text-zinc-400 text-sm italic p-4 text-center">Nenhum chamado pendente.</p>
+              <p className="text-text-muted text-sm italic p-4 text-center">Nenhum chamado pendente.</p>
             ) : (
               pendentes.map(chamado => (
                 <ChamadoCard key={chamado.id} chamado={chamado} onClick={() => setChamadoSelecionado(chamado)} />
@@ -263,14 +254,14 @@ export default function Dashboard() {
         </div>
 
         {/* Coluna Em Andamento */}
-        <div className="flex flex-col bg-zinc-100/50 rounded-2xl p-4 border border-zinc-200 shadow-inner">
+        <div className="flex flex-col bg-surface-muted rounded-2xl p-4 border border-border shadow-sm">
           <div className="flex items-center gap-2 mb-4 px-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-            <h2 className="font-bold text-zinc-800">Em Andamento ({emAndamento.length})</h2>
+            <div className="w-2.5 h-2.5 rounded-full bg-status-progress-bg" />
+            <h2 className="font-bold text-text">Em Andamento ({emAndamento.length})</h2>
           </div>
           <div className="flex flex-col gap-3 overflow-y-auto max-h-[70vh] pb-4">
             {emAndamento.length === 0 ? (
-              <p className="text-zinc-400 text-sm italic p-4 text-center">Nenhum chamado em andamento.</p>
+              <p className="text-text-muted text-sm italic p-4 text-center">Nenhum chamado em andamento.</p>
             ) : (
               emAndamento.map(chamado => (
                 <ChamadoCard key={chamado.id} chamado={chamado} onClick={() => setChamadoSelecionado(chamado)} />
@@ -280,14 +271,14 @@ export default function Dashboard() {
         </div>
 
         {/* Coluna Concluídos (Recentemente) */}
-        <div className="flex flex-col bg-zinc-100/50 rounded-2xl p-4 border border-zinc-200 shadow-inner">
+        <div className="flex flex-col bg-surface-muted rounded-2xl p-4 border border-border shadow-sm">
           <div className="flex items-center gap-2 mb-4 px-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-            <h2 className="font-bold text-zinc-800">Recentes (Hoje)</h2>
+            <div className="w-2.5 h-2.5 rounded-full bg-status-completed-bg" />
+            <h2 className="font-bold text-text">Recentes (Hoje)</h2>
           </div>
           <div className="flex flex-col gap-3 overflow-y-auto max-h-[70vh] pb-4">
             {concluidos.length === 0 ? (
-              <p className="text-zinc-400 text-sm italic p-4 text-center">Os chamados concluídos somem da fila principal e vão para os relatórios.</p>
+              <p className="text-text-muted text-sm italic p-4 text-center">Os chamados concluídos somem da fila principal e vão para os relatórios.</p>
             ) : (
               concluidos.map(chamado => (
                 <ChamadoCard key={chamado.id} chamado={chamado} onClick={() => setChamadoSelecionado(chamado)} />

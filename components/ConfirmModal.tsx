@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/Button';
 
 interface ConfirmModalProps {
   title: string;
@@ -46,7 +47,7 @@ export function ConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm"
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
@@ -55,34 +56,30 @@ export function ConfirmModal({
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden outline-none"
+        className="bg-surface w-full max-w-md rounded-3xl shadow-2xl overflow-hidden outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6">
-          <h3 id="confirm-modal-title" className="text-lg font-bold text-zinc-900 mb-2">
+          <h3 id="confirm-modal-title" className="text-lg font-bold text-text mb-2">
             {title}
           </h3>
-          <p className="text-sm text-zinc-600 leading-relaxed">
+          <p className="text-sm text-text-muted leading-relaxed">
             {message}
           </p>
         </div>
-        <div className="px-6 py-4 border-t border-zinc-100 bg-zinc-50 flex justify-end gap-3">
-          <button
+        <div className="px-6 py-4 border-t border-border bg-surface-muted flex justify-end gap-3">
+          <Button
             onClick={onCancel}
-            className="px-5 py-2.5 rounded-xl font-medium text-zinc-600 hover:bg-zinc-200 transition-colors"
+            variant="secondary"
           >
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={onConfirm}
-            className={`px-5 py-2.5 rounded-xl font-bold text-white shadow-md hover:shadow-lg transition-all ${
-              isDanger
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-[#E31837] hover:bg-red-700'
-            }`}
+            variant={isDanger ? 'danger' : 'primary'}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -27,10 +27,10 @@ export function useToast() {
 // ─── Estilos por variante ────────────────────────────────
 const variantStyles: Record<ToastVariant, { bg: string; border: string; icon: string; text: string }> = {
   success: {
-    bg: 'bg-emerald-50',
+    bg: 'bg-status-completed-bg',
     border: 'border-emerald-200',
     icon: '✓',
-    text: 'text-emerald-800',
+    text: 'text-status-completed-text',
   },
   error: {
     bg: 'bg-red-50',
@@ -39,24 +39,24 @@ const variantStyles: Record<ToastVariant, { bg: string; border: string; icon: st
     text: 'text-red-800',
   },
   warning: {
-    bg: 'bg-amber-50',
+    bg: 'bg-status-pending-bg',
     border: 'border-amber-200',
     icon: '⚠',
-    text: 'text-amber-800',
+    text: 'text-status-pending-text',
   },
   info: {
-    bg: 'bg-blue-50',
+    bg: 'bg-status-progress-bg',
     border: 'border-blue-200',
     icon: 'ℹ',
-    text: 'text-blue-800',
+    text: 'text-status-progress-text',
   },
 };
 
 const iconBgStyles: Record<ToastVariant, string> = {
-  success: 'bg-emerald-500',
-  error: 'bg-red-500',
-  warning: 'bg-amber-500',
-  info: 'bg-blue-500',
+  success: 'bg-status-completed',
+  error: 'bg-status-danger',
+  warning: 'bg-status-pending',
+  info: 'bg-status-progress',
 };
 
 // ─── Provider ────────────────────────────────────────────

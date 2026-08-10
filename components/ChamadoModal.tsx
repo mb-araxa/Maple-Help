@@ -2,6 +2,9 @@ import { Chamado } from '@/types/database';
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { ConfirmModal } from './ConfirmModal';
+import { Button } from '@/components/ui/Button';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { FormField } from '@/components/ui/FormField';
 
 interface ChamadoModalProps {
   chamado: Chamado;
@@ -20,7 +23,6 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
   const [resolucaoError, setResolucaoError] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Fechar com ESC e travar scroll do body (#7)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -34,7 +36,6 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
     document.addEventListener('keydown', handleKeyDown);
     document.body.style.overflow = 'hidden';
 
-    // Auto-focus para acessibilidade
     modalRef.current?.focus();
 
     return () => {
@@ -73,9 +74,8 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
 
   return (
     <>
-      {/* Backdrop — clicável para fechar (#7) */}
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm transition-all"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm transition-all"
         onClick={onClose}
         role="dialog"
         aria-modal="true"
@@ -84,23 +84,17 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
         <div
           ref={modalRef}
           tabIndex={-1}
-          className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] outline-none"
+          className="bg-surface w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] outline-none"
           onClick={(e) => e.stopPropagation()}
         >
           
-          {/* Header do Modal */}
-          <div className="px-6 py-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
+          <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-surface-muted">
             <div className="flex items-center gap-3">
-              <span className={`px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm ${
-                chamado.status === 'Pendente' ? 'bg-[#E31837]' : 
-                chamado.status === 'Em Andamento' ? 'bg-amber-400 text-zinc-900' : 'bg-green-500'
-              }`}>
-                {chamado.status}
-              </span>
-              <h2 id="chamado-modal-title" className="text-lg font-bold text-zinc-800">Detalhes do Chamado</h2>
+              <StatusBadge status={chamado.status} />
+              <h2 id="chamado-modal-title" className="text-lg font-bold text-text">Detalhes do Chamado</h2>
               
               {chamado.responsavel && (
-                <span className="ml-2 flex items-center gap-1.5 px-3 py-1 bg-zinc-200/50 text-zinc-700 rounded-lg text-xs font-semibold border border-zinc-300/50">
+                <span className="ml-2 flex items-center gap-1.5 px-3 py-1 bg-surface text-text-muted rounded-lg text-xs font-semibold border border-border">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 opacity-70">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-5.5-2.5a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM10 12a5.99 5.99 0 00-4.793 2.39A6.483 6.483 0 0010 16.5a6.483 6.483 0 004.793-2.11A5.99 5.99 0 0010 12z" clipRule="evenodd" />
                   </svg>
@@ -113,7 +107,7 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
               {onDelete && (
                 <button 
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors flex-shrink-0"
+                  className="p-2 text-text-subtle hover:text-status-danger hover:bg-red-50 rounded-full transition-colors flex-shrink-0"
                   title="Apagar Chamado de Teste"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -124,7 +118,7 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
               
               <button 
                 onClick={onClose}
-                className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-full transition-colors flex-shrink-0"
+                className="p-2 text-text-subtle hover:text-text hover:bg-surface-muted rounded-full transition-colors flex-shrink-0"
                 aria-label="Fechar modal"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
@@ -134,24 +128,23 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
             </div>
           </div>
 
-          {/* Corpo do Modal (Scrollable) */}
           <div className="p-6 overflow-y-auto flex-1">
             <div className="grid grid-cols-2 gap-6 mb-6">
               <div>
-                <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-1">Solicitante</p>
-                <p className="text-zinc-900 font-medium">{chamado.solicitante}</p>
+                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Solicitante</p>
+                <p className="text-text font-medium">{chamado.solicitante}</p>
               </div>
               <div>
-                <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-1">Local</p>
-                <p className="text-zinc-900 font-medium">{chamado.local}</p>
+                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Local</p>
+                <p className="text-text font-medium">{chamado.local}</p>
               </div>
               <div>
-                <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-1">Categoria</p>
-                <p className="text-zinc-900 font-medium">{chamado.categoria}</p>
+                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Categoria</p>
+                <p className="text-text font-medium">{chamado.categoria}</p>
               </div>
               <div>
-                <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-1">Data de Abertura</p>
-                <p className="text-zinc-900 font-medium">
+                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Data de Abertura</p>
+                <p className="text-text font-medium">
                   {new Date(chamado.data_criacao).toLocaleString('pt-BR', {
                     day: '2-digit', month: '2-digit', year: 'numeric',
                     hour: '2-digit', minute: '2-digit'
@@ -160,14 +153,14 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
               </div>
             </div>
 
-            <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
-              <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-2">Descrição do Problema</p>
-              <p className="text-zinc-800 whitespace-pre-wrap leading-relaxed">{chamado.descricao}</p>
+            <div className="bg-surface-muted p-4 rounded-2xl border border-border">
+              <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-2">Descrição do Problema</p>
+              <p className="text-text whitespace-pre-wrap leading-relaxed">{chamado.descricao}</p>
               
               {chamado.anexo_url && (
-                <div className="mt-4 pt-4 border-t border-zinc-200">
-                  <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-2">Anexo</p>
-                  <a href={chamado.anexo_url} target="_blank" rel="noopener noreferrer" className="block max-w-sm rounded-lg overflow-hidden border border-zinc-200 shadow-sm hover:shadow-md transition-shadow relative h-64 w-full">
+                <div className="mt-4 pt-4 border-t border-border">
+                  <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-2">Anexo</p>
+                  <a href={chamado.anexo_url} target="_blank" rel="noopener noreferrer" className="block max-w-sm rounded-lg overflow-hidden border border-border shadow-sm hover:shadow-md transition-shadow relative h-64 w-full">
                     <Image 
                       src={chamado.anexo_url} 
                       alt="Anexo do Chamado" 
@@ -180,47 +173,50 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
               )}
             </div>
 
-            {/* Área de Resolução para Chamados em Andamento */}
             {chamado.status === 'Em Andamento' && (
               <div className="mt-6 animate-in fade-in slide-in-from-bottom-2 space-y-4">
-                <div>
-                  <label htmlFor="tempo-input" className="block text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-2">
-                    Tempo Gasto <span className="text-[#E31837]">*</span>
-                  </label>
+                <FormField
+                  label="Tempo Gasto"
+                  htmlFor="tempo-input"
+                  required
+                  error={tempoError ? 'Preenchimento obrigatório' : undefined}
+                >
                   <input
                     id="tempo-input"
                     type="text"
                     value={tempoGasto}
                     onChange={(e) => setTempoGasto(e.target.value)}
                     placeholder="Ex: 30m, 1h 20m..."
-                    className={`w-full p-3 bg-white text-zinc-900 border rounded-xl focus:ring-2 focus:ring-[#E31837] focus:border-[#E31837] outline-none transition-all ${
-                      tempoError ? 'border-red-400 ring-2 ring-red-400' : 'border-zinc-200'
+                    className={`w-full p-3 bg-surface border rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all ${
+                      tempoError ? 'border-status-danger ring-2 ring-status-danger/50' : 'border-border'
                     }`}
                   />
-                </div>
-                <div>
-                  <label htmlFor="resolucao-textarea" className="block text-xs text-zinc-500 font-semibold uppercase tracking-wider mb-2">
-                    Notas de Resolução <span className="text-[#E31837]">*</span>
-                  </label>
+                </FormField>
+                
+                <FormField
+                  label="Notas de Resolução"
+                  htmlFor="resolucao-textarea"
+                  required
+                  error={resolucaoError ? 'Preenchimento obrigatório' : undefined}
+                >
                   <textarea
                     id="resolucao-textarea"
                     value={resolucao}
                     onChange={(e) => setResolucao(e.target.value)}
                     placeholder="Descreva o que foi feito para resolver o problema..."
-                    className={`w-full p-4 bg-white text-zinc-900 border rounded-2xl focus:ring-2 focus:ring-[#E31837] focus:border-[#E31837] outline-none transition-all resize-none min-h-[120px] ${
-                      resolucaoError ? 'border-red-400 ring-2 ring-red-400' : 'border-zinc-200'
+                    className={`w-full p-4 bg-surface border rounded-2xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all resize-none min-h-[120px] ${
+                      resolucaoError ? 'border-status-danger ring-2 ring-status-danger/50' : 'border-border'
                     }`}
                   />
-                </div>
+                </FormField>
               </div>
             )}
 
-            {/* Exibir resolução se já concluído */}
             {chamado.status === 'Concluído' && chamado.resolucao && (
-              <div className="mt-6 bg-green-50 p-4 rounded-2xl border border-green-100">
-                <p className="text-xs text-green-700 font-semibold uppercase tracking-wider mb-2">Solução Aplicada</p>
-                <p className="text-green-900 whitespace-pre-wrap">{chamado.resolucao}</p>
-                <div className="flex items-center gap-4 mt-3 border-t border-green-200/50 pt-2 text-xs text-green-700 font-medium">
+              <div className="mt-6 bg-status-completed-bg p-4 rounded-2xl border border-emerald-200/50">
+                <p className="text-xs text-status-completed-text font-semibold uppercase tracking-wider mb-2">Solução Aplicada</p>
+                <p className="text-status-completed-text whitespace-pre-wrap">{chamado.resolucao}</p>
+                <div className="flex items-center gap-4 mt-3 border-t border-emerald-200/30 pt-2 text-xs text-status-completed-text font-medium">
                   {chamado.data_resolucao && (
                     <p>
                       Resolvido em: {new Date(chamado.data_resolucao).toLocaleString('pt-BR', {
@@ -239,41 +235,39 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
             )}
           </div>
 
-          {/* Rodapé com Ações */}
           {(chamado.status === 'Pendente' || chamado.status === 'Em Andamento') && (
-            <div className="px-6 py-4 border-t border-zinc-100 bg-zinc-50 flex justify-end gap-3">
-              <button
+            <div className="px-6 py-4 border-t border-border bg-surface-muted flex justify-end gap-3">
+              <Button
                 onClick={onClose}
-                className="px-5 py-2.5 rounded-xl font-medium text-zinc-600 hover:bg-zinc-200 transition-colors"
+                variant="secondary"
               >
                 Cancelar
-              </button>
+              </Button>
               
               {chamado.status === 'Pendente' && (
-                <button
+                <Button
                   onClick={handleAssumir}
-                  disabled={loading}
-                  className="px-5 py-2.5 rounded-xl font-bold bg-[#E31837] text-white hover:bg-red-700 shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                  isLoading={loading}
+                  variant="primary"
                 >
-                  {loading ? 'Processando...' : 'Assumir Chamado'}
-                </button>
+                  Assumir Chamado
+                </Button>
               )}
 
               {chamado.status === 'Em Andamento' && (
-                <button
+                <Button
                   onClick={handleConcluir}
-                  disabled={loading}
-                  className="px-5 py-2.5 rounded-xl font-bold bg-green-600 text-white hover:bg-green-700 shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                  isLoading={loading}
+                  variant="success"
                 >
-                  {loading ? 'Processando...' : 'Concluir Chamado'}
-                </button>
+                  Concluir Chamado
+                </Button>
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal de Confirmação de Delete (#2 — substitui confirm()) */}
       {showDeleteConfirm && (
         <ConfirmModal
           title="Apagar Chamado"

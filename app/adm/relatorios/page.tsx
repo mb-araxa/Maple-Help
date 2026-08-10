@@ -9,6 +9,8 @@ import { Chamado } from '@/types/database';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { SurfaceCard } from '@/components/ui/SurfaceCard';
+import { Button } from '@/components/ui/Button';
 
 export default function RelatoriosPage() {
   const router = useRouter();
@@ -58,6 +60,7 @@ export default function RelatoriosPage() {
       }
     }
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mes, ano, page]);
 
   // Buscar todos os dados para métricas sempre que mudar mês/ano
@@ -73,6 +76,7 @@ export default function RelatoriosPage() {
       }
     }
     fetchTodos();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1); // Reseta a página para 1 quando muda a data
   }, [mes, ano]);
   
@@ -220,11 +224,11 @@ export default function RelatoriosPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 p-8">
+    <div className="flex flex-col gap-6 p-2 md:p-4">
       {/* Botão Voltar */}
       <button 
         onClick={() => router.push('/adm')}
-        className="mb-6 flex items-center text-zinc-500 hover:text-zinc-900 transition-colors font-medium text-sm gap-2"
+        className="flex items-center text-text-subtle hover:text-text transition-colors font-medium text-sm gap-2"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -233,17 +237,17 @@ export default function RelatoriosPage() {
       </button>
 
       {/* Cabeçalho */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-zinc-900 tracking-tight">Relatórios Mensais</h1>
-          <p className="text-zinc-500 mt-1">Acompanhamento e exportação de chamados concluídos.</p>
+          <h1 className="text-3xl font-bold text-text tracking-tight">Relatórios Mensais</h1>
+          <p className="text-text-muted mt-1">Acompanhamento e exportação de chamados concluídos.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
           <select 
             value={mes} 
             onChange={(e) => setMes(Number(e.target.value))}
-            className="px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E31837] text-zinc-700 bg-white"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-text bg-surface"
           >
             {meses.map(m => (
               <option key={m.value} value={m.value}>{m.label}</option>
@@ -253,50 +257,50 @@ export default function RelatoriosPage() {
           <select 
             value={ano} 
             onChange={(e) => setAno(Number(e.target.value))}
-            className="px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E31837] text-zinc-700 bg-white"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-text bg-surface"
           >
             {anos.map(a => (
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
 
-          <button 
+          <Button 
             onClick={exportarParaExcel}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors shadow-sm"
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
             </svg>
             Exportar Planilha Excel
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Cards de Métricas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100 flex flex-col justify-center">
-          <h3 className="text-zinc-500 font-medium text-sm mb-1 uppercase tracking-wide">Total Concluídos</h3>
-          <p className="text-4xl font-bold text-zinc-900">{loading ? '-' : totalChamados}</p>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <SurfaceCard className="p-6 flex flex-col justify-center">
+          <h3 className="text-text-subtle font-medium text-sm mb-1 uppercase tracking-wide">Total Concluídos</h3>
+          <p className="text-4xl font-bold text-text">{loading ? '-' : totalChamados}</p>
+        </SurfaceCard>
         
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100 flex flex-col justify-center">
-          <h3 className="text-zinc-500 font-medium text-sm mb-1 uppercase tracking-wide">Maior Incidência</h3>
-          <p className="text-2xl font-bold text-zinc-900 truncate">{loading ? '-' : categoriaMaisAfetada}</p>
-        </div>
+        <SurfaceCard className="p-6 flex flex-col justify-center">
+          <h3 className="text-text-subtle font-medium text-sm mb-1 uppercase tracking-wide">Maior Incidência</h3>
+          <p className="text-2xl font-bold text-text truncate">{loading ? '-' : categoriaMaisAfetada}</p>
+        </SurfaceCard>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100 flex flex-col justify-center">
-          <h3 className="text-zinc-500 font-medium text-sm mb-1 uppercase tracking-wide">Média de Atendimento</h3>
-          <p className="text-4xl font-bold text-zinc-900">{loading ? '-' : mediaAtendimento()}</p>
-        </div>
+        <SurfaceCard className="p-6 flex flex-col justify-center">
+          <h3 className="text-text-subtle font-medium text-sm mb-1 uppercase tracking-wide">Média de Atendimento</h3>
+          <p className="text-4xl font-bold text-text">{loading ? '-' : mediaAtendimento()}</p>
+        </SurfaceCard>
       </div>
 
       {/* Gráficos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Gráfico de Status (Pizza) */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100">
-          <h3 className="text-zinc-900 font-bold mb-4">Status dos Chamados (Mês Atual)</h3>
+        <SurfaceCard className="p-6">
+          <h3 className="text-text font-bold mb-4">Status dos Chamados (Mês Atual)</h3>
           {estatisticasMensais.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-zinc-500">Sem dados</div>
+            <div className="h-[300px] flex items-center justify-center text-text-subtle">Sem dados</div>
           ) : (
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -320,13 +324,13 @@ export default function RelatoriosPage() {
               </ResponsiveContainer>
             </div>
           )}
-        </div>
+        </SurfaceCard>
 
         {/* Gráfico de Categorias (Barras) */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100">
-          <h3 className="text-zinc-900 font-bold mb-4">Volume por Categoria (Mês Atual)</h3>
+        <SurfaceCard className="p-6">
+          <h3 className="text-text font-bold mb-4">Volume por Categoria (Mês Atual)</h3>
           {estatisticasMensais.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-zinc-500">Sem dados</div>
+            <div className="h-[300px] flex items-center justify-center text-text-subtle">Sem dados</div>
           ) : (
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -343,24 +347,24 @@ export default function RelatoriosPage() {
               </ResponsiveContainer>
             </div>
           )}
-        </div>
+        </SurfaceCard>
       </div>
 
       {/* Tabela de Dados */}
-      <div className="bg-white rounded-2xl shadow-sm border border-zinc-100 overflow-hidden">
+      <SurfaceCard className="overflow-hidden">
         {loading ? (
           <div className="p-12 flex justify-center items-center">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#E31837]"></div>
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-500"></div>
           </div>
         ) : chamados.length === 0 ? (
-          <div className="p-12 text-center text-zinc-500">
+          <div className="p-12 text-center text-text-subtle">
             Nenhum chamado concluído encontrado neste período.
           </div>
         ) : (
           <div className="overflow-x-auto flex flex-col justify-between">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-zinc-50 text-zinc-600 text-xs font-bold uppercase tracking-wider border-b border-zinc-200">
+                <tr className="bg-surface-muted text-text-muted text-xs font-bold uppercase tracking-wider border-b border-border">
                   <th className="px-6 py-4">Abertura</th>
                   <th className="px-6 py-4">Conclusão</th>
                   <th className="px-6 py-4">Solicitante</th>
@@ -369,24 +373,24 @@ export default function RelatoriosPage() {
                   <th className="px-6 py-4 min-w-[200px]">Resolução</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100 text-sm">
+              <tbody className="divide-y divide-border text-sm">
                 {chamados.map(c => (
-                  <tr key={c.id} className="hover:bg-zinc-50/50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-zinc-500">
+                  <tr key={c.id} className="hover:bg-surface-muted transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-text-subtle">
                       {new Date(c.data_criacao).toLocaleDateString('pt-BR')}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-zinc-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-text-subtle">
                       {c.data_resolucao ? new Date(c.data_resolucao).toLocaleDateString('pt-BR') : '-'}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-zinc-900">{c.solicitante}</div>
+                      <div className="font-semibold text-text">{c.solicitante}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-zinc-900 font-medium">{c.categoria}</div>
-                      <div className="text-zinc-500 text-xs">{c.local}</div>
+                      <div className="text-text font-medium">{c.categoria}</div>
+                      <div className="text-text-subtle text-xs">{c.local}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-status-progress-bg text-status-progress-text text-xs font-semibold border border-status-progress-text/10">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
                         </svg>
@@ -394,7 +398,7 @@ export default function RelatoriosPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="bg-green-50 text-green-800 p-3 rounded-lg text-xs border border-green-100/50 leading-relaxed">
+                      <div className="bg-status-completed-bg text-status-completed-text p-3 rounded-lg text-xs border border-status-completed-text/10 leading-relaxed">
                         <span className="font-bold block mb-1">Solução Aplicada:</span>
                         {c.resolucao}
                       </div>
@@ -406,25 +410,25 @@ export default function RelatoriosPage() {
             
             {/* Controles de Paginação */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-200 bg-zinc-50/30">
-                <p className="text-sm text-zinc-500">
-                  Mostrando de <span className="font-semibold text-zinc-800">{((page - 1) * limit) + 1}</span> a <span className="font-semibold text-zinc-800">{Math.min(page * limit, totalChamados)}</span> de <span className="font-semibold text-zinc-800">{totalChamados}</span> resultados
+              <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-surface-muted/30">
+                <p className="text-sm text-text-subtle">
+                  Mostrando de <span className="font-semibold text-text">{((page - 1) * limit) + 1}</span> a <span className="font-semibold text-text">{Math.min(page * limit, totalChamados)}</span> de <span className="font-semibold text-text">{totalChamados}</span> resultados
                 </p>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="px-3 py-1.5 text-sm font-medium border border-zinc-300 rounded-md bg-white text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="px-3 py-1.5 text-sm font-medium border border-border rounded-md bg-surface text-text hover:bg-surface-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     Anterior
                   </button>
-                  <span className="text-sm text-zinc-600 font-medium px-2">
+                  <span className="text-sm text-text font-medium px-2">
                     Página {page} de {totalPages}
                   </span>
                   <button
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="px-3 py-1.5 text-sm font-medium border border-zinc-300 rounded-md bg-white text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="px-3 py-1.5 text-sm font-medium border border-border rounded-md bg-surface text-text hover:bg-surface-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     Próximo
                   </button>
@@ -433,7 +437,7 @@ export default function RelatoriosPage() {
             )}
           </div>
         )}
-      </div>
+      </SurfaceCard>
     </div>
   );
 }

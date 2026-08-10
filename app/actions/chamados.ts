@@ -21,7 +21,7 @@ async function getSupabase() {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             );
-          } catch (error) {
+          } catch {
             // Ignorar erro se for chamado de um Server Component
           }
         },
@@ -32,7 +32,7 @@ async function getSupabase() {
 
 import { headers } from 'next/headers';
 import { z } from 'zod';
-import { extractFirstName, getAdminEmails } from '@/lib/utils';
+// import { extractFirstName, getAdminEmails } from '@/lib/utils';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
@@ -55,52 +55,39 @@ const ratelimit = redis ? new Ratelimit({
   limiter: Ratelimit.slidingWindow(RATE_LIMIT, '10 m'),
 }) : null;
 
-/**
- * Validação de usuário e permissão de administrador na Server Action.
- * Lança erro caso não seja administrador. Retorna os dados da sessão/usuário.
- */
-async function requireAdmin() {
-  const supabase = await getSupabase();
-  const { data: { session }, error } = await supabase.auth.getSession();
-  
-  if (error || !session) {
-    throw new Error('Usuário não autenticado.');
-  }
-
-  const email = session.user.email;
-  if (!email || !getAdminEmails().includes(email.toLowerCase())) {
-    throw new Error('Acesso negado: você não tem permissão de administrador.');
-  }
-
-  return { session, email, nome: extractFirstName(email) };
-}
-
-/**
- * Verifica se o usuário logado é administrador.
- * Usado pelo frontend (Menu) para ocultar botões de forma segura sem expor a lista no client.
- */
-export async function checkIsAdmin(): Promise<boolean> {
-  try {
-    const supabase = await getSupabase();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.email) return false;
-    return getAdminEmails().includes(session.user.email.toLowerCase());
-  } catch {
-    return false;
-  }
-}
+import { 
+  requireAdmin, 
+  requireTechnicianOrAdmin, 
+  requireAuthenticatedUser
+} from '@/app/actions/auth';
 
 const abrirChamadoSchema = z.object({
   solicitante: z.string().min(1, 'Solicitante é obrigatório.').max(100),
   local: z.string().min(1, 'Local é obrigatório.').max(150),
   categoria: z.string().min(1, 'Categoria é obrigatória.').max(50),
   descricao: z.string().min(10, 'A descrição deve ter pelo menos 10 caracteres.').max(1000),
+  area: z.enum(['ti', 'manutencao']).default('ti'),
+  priority: z.enum(['baixa', 'normal', 'alta', 'critica']).default('normal'),
   anexo_url: z.string().optional().or(z.literal('')),
 });
 
+function calcularSLA(priority: 'baixa' | 'normal' | 'alta' | 'critica'): Date {
+  const data = new Date();
+  if (priority === 'critica') {
+    data.setHours(data.getHours() + 4);
+  } else if (priority === 'alta') {
+    data.setDate(data.getDate() + 1);
+  } else if (priority === 'normal') {
+    data.setDate(data.getDate() + 3);
+  } else if (priority === 'baixa') {
+    data.setDate(data.getDate() + 5);
+  }
+  return data;
+}
+
 /**
  * Cria um novo chamado no sistema.
- * @param dados Dados do chamado (solicitante, local, categoria, descricao).
+ * @param dados Dados do chamado (solicitante, local, categoria, descricao, area, priority).
  * @returns O chamado recém-criado.
  */
 export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resolucao' | 'data_criacao' | 'data_resolucao' | 'responsavel' | 'tempo_gasto'>) {
@@ -137,9 +124,11 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
     const supabase = await getSupabase();
     
     // Recupera o ID do usuário logado (se houver)
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData?.session?.user?.id;
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id;
     
+    const dueAt = calcularSLA(dadosValidados.priority).toISOString();
+
     // Status será salvo como 'Pendente' para alinhar com a estrutura do BD.
     const { data, error } = await supabase
       .from('chamados')
@@ -149,6 +138,9 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
           local: dadosValidados.local, 
           categoria: dadosValidados.categoria, 
           descricao: dadosValidados.descricao,
+          area: dadosValidados.area,
+          priority: dadosValidados.priority,
+          due_at: dueAt,
           anexo_url: dadosValidados.anexo_url,
           status: 'Pendente',
           ...(userId ? { user_id: userId } : {})
@@ -160,6 +152,16 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
     if (error) {
       throw error;
     }
+
+    // Criar evento inicial
+    await supabase.from('chamado_eventos').insert([
+      {
+        chamado_id: data.id,
+        actor_id: userId || null,
+        event_type: 'criacao',
+        description: 'Chamado criado pelo solicitante.',
+      }
+    ]);
 
     return data as Chamado;
   } catch (error: any) {
@@ -329,19 +331,22 @@ const tempoGastoSchema = z.string().min(1, 'O tempo gasto é obrigatório.').max
  */
 export async function finalizarChamado(id: string, resolucao: string, tempo_gasto: string) {
   try {
-    await requireAdmin();
+    const profile = await requireTechnicianOrAdmin();
     uuidSchema.parse(id);
     resolucaoSchema.parse(resolucao);
     tempoGastoSchema.parse(tempo_gasto);
 
     const supabase = await getSupabase();
+    const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('chamados')
       .update({ 
         status: 'Concluído', 
         resolucao,
         tempo_gasto,
-        data_resolucao: new Date().toISOString() // Preenche com o timestamp de agora
+        data_resolucao: now,
+        closed_at: now,
+        closed_by: profile.id
       })
       .eq('id', id)
       .select()
@@ -350,6 +355,13 @@ export async function finalizarChamado(id: string, resolucao: string, tempo_gast
     if (error) {
       throw error;
     }
+
+    await supabase.from('chamado_eventos').insert([{
+      chamado_id: data.id,
+      actor_id: profile.id,
+      event_type: 'concluido',
+      description: 'Chamado concluído.'
+    }]);
 
     return data as Chamado;
   } catch (error: any) {
@@ -365,15 +377,18 @@ export async function finalizarChamado(id: string, resolucao: string, tempo_gast
  */
 export async function assumirChamado(id: string) {
   try {
-    const { nome: responsavel } = await requireAdmin();
+    const profile = await requireTechnicianOrAdmin();
     uuidSchema.parse(id);
 
     const supabase = await getSupabase();
+    const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('chamados')
       .update({ 
         status: 'Em Andamento',
-        responsavel 
+        assigned_to: profile.id,
+        assigned_at: now,
+        responsavel: profile.full_name || 'Técnico'
       })
       .eq('id', id)
       .select()
@@ -383,10 +398,63 @@ export async function assumirChamado(id: string) {
       throw error;
     }
 
+    await supabase.from('chamado_eventos').insert([{
+      chamado_id: data.id,
+      actor_id: profile.id,
+      event_type: 'assumido',
+      description: `Chamado assumido por ${profile.full_name || 'Técnico'}.`
+    }]);
+
     return data as Chamado;
   } catch (error: any) {
     console.error('Erro em assumirChamado:', error);
     throw new Error(`Não foi possível assumir o chamado: ${error.message}`);
+  }
+}
+
+/**
+ * Reabre um chamado que já estava concluído.
+ * @param id ID do chamado
+ * @param motivo Motivo da reabertura
+ */
+export async function reabrirChamado(id: string, motivo: string) {
+  try {
+    const profile = await requireAuthenticatedUser();
+    uuidSchema.parse(id);
+    z.string().min(10, 'O motivo deve ter pelo menos 10 caracteres.').parse(motivo);
+
+    const supabase = await getSupabase();
+    
+    // Check permission
+    const { data: chamado } = await supabase.from('chamados').select('*').eq('id', id).single();
+    if (!chamado) throw new Error('Chamado não encontrado.');
+    if (chamado.user_id !== profile.id && profile.role !== 'admin') {
+      throw new Error('Sem permissão para reabrir este chamado.');
+    }
+    
+    const { data, error } = await supabase
+      .from('chamados')
+      .update({ 
+        status: 'Reaberto',
+        reopened_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    await supabase.from('chamado_eventos').insert([{
+      chamado_id: data.id,
+      actor_id: profile.id,
+      event_type: 'reaberto',
+      description: `Chamado reaberto. Motivo: ${motivo}`
+    }]);
+
+    return data as Chamado;
+  } catch (error: any) {
+    console.error('Erro em reabrirChamado:', error);
+    throw new Error(`Não foi possível reabrir o chamado: ${error.message}`);
   }
 }
 
@@ -423,13 +491,13 @@ export async function obterMeusChamados() {
   try {
     const supabase = await getSupabase();
     
-    // Pega a sessão atual para descobrir quem é o usuário
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !sessionData.session) {
+    // Pega o usuário atual
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
       throw new Error('Usuário não autenticado.');
     }
     
-    const userId = sessionData.session.user.id;
+    const userId = user.id;
 
     // Busca apenas os chamados onde user_id bate com o usuário atual
     const { data, error } = await supabase
@@ -491,3 +559,98 @@ export async function obterEstatisticasMensais(mes: number, ano: number) {
     throw new Error(`Não foi possível carregar estatísticas: ${error.message}`);
   }
 }
+
+export async function obterChamado(id: string) {
+  try {
+    const supabase = await getSupabase();
+    await requireAuthenticatedUser();
+    
+    // RLS will enforce that only requester can see their own, and tech/admin can see all
+    const { data, error } = await supabase
+      .from('chamados')
+      .select('*, profiles!chamados_assigned_to_fkey(full_name, avatar_url, role)')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    
+    const chamado = data as any;
+    if (chamado.anexo_url && !chamado.anexo_url.startsWith('http')) {
+      const { data: signed } = await supabase.storage.from('chamados-anexos').createSignedUrl(chamado.anexo_url, 3600);
+      if (signed?.signedUrl) chamado.anexo_url = signed.signedUrl;
+    }
+
+    return chamado;
+  } catch (error: any) {
+    console.error('Erro em obterChamado:', error);
+    throw new Error('N�o foi poss�vel carregar o chamado: ' + error.message);
+  }
+}
+
+export async function obterEventos(chamadoId: string) {
+  try {
+    const supabase = await getSupabase();
+    await requireAuthenticatedUser();
+    
+    const { data, error } = await supabase
+      .from('chamado_eventos')
+      .select('*, profiles!chamado_eventos_actor_id_fkey(full_name, avatar_url, role)')
+      .eq('chamado_id', chamadoId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Erro em obterEventos:', error);
+    throw new Error('N�o foi poss�vel carregar os eventos: ' + error.message);
+  }
+}
+
+export async function obterMensagens(chamadoId: string) {
+  try {
+    const supabase = await getSupabase();
+    await requireAuthenticatedUser();
+    
+    const { data, error } = await supabase
+      .from('chamado_mensagens')
+      .select('*, profiles!chamado_mensagens_author_id_fkey(full_name, avatar_url, role)')
+      .eq('chamado_id', chamadoId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Erro em obterMensagens:', error);
+    throw new Error('N�o foi poss�vel carregar as mensagens: ' + error.message);
+  }
+}
+
+export async function enviarMensagem(chamadoId: string, message: string, isInternal: boolean = false) {
+  try {
+    const profile = await requireAuthenticatedUser();
+    const supabase = await getSupabase();
+    
+    if (isInternal && profile.role === 'requester') {
+      throw new Error('Sem permiss�o para enviar mensagem interna.');
+    }
+
+    const { data, error } = await supabase
+      .from('chamado_mensagens')
+      .insert([{
+        chamado_id: chamadoId,
+        author_id: profile.id,
+        message,
+        is_internal: isInternal
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    
+    return data;
+  } catch (error: any) {
+    console.error('Erro em enviarMensagem:', error);
+    throw new Error('N�o foi poss�vel enviar a mensagem: ' + error.message);
+  }
+}
+

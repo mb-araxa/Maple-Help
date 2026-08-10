@@ -88,12 +88,14 @@ describe('Ações de Chamados (Server Actions)', () => {
     it('deve rejeitar chamado sem solicitante', async () => {
       const dadosInvalidos = { solicitante: '', local: 'Sala 1', categoria: 'TI', descricao: 'O mouse parou de funcionar e preciso de um novo urgentemente.' };
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await expect(chamados.abrirChamado(dadosInvalidos as any)).rejects.toThrow();
     });
 
     it('deve rejeitar chamado com descrição muito curta', async () => {
       const dadosInvalidos = { solicitante: 'João', local: 'Sala 1', categoria: 'TI', descricao: 'Curta' };
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await expect(chamados.abrirChamado(dadosInvalidos as any)).rejects.toThrow();
     });
   });

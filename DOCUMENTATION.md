@@ -1,104 +1,69 @@
-# Documentação Oficial: Maple Help
+﻿# Documentação do Projeto: Maple Help
 
-## 1. Visão Geral do Projeto
+## Testes Manuais de RLS (Homologação)
 
-**Maple Help** é um sistema de Help Desk e gerenciamento de chamados internos desenvolvido para a unidade Maple Bear Araxá. O objetivo principal do projeto é centralizar, organizar e otimizar o atendimento a requisições de TI, Manutenção e outras categorias, substituindo métodos informais por uma plataforma centralizada e de fácil acompanhamento.
+Para garantir que o Row Level Security (RLS) esteja funcionando perfeitamente, siga este roteiro no painel do Supabase do seu ambiente de homologação, utilizando a aba **SQL Editor** ou impersonificando usuários.
 
----
+### Pré-requisitos
+Tenha 3 usuários de teste cadastrados no Supabase Auth:
+- `user_solicitante@teste.com` (Papel: `requester`)
+- `user_tecnico@teste.com` (Papel: `technician`)
+- `user_admin@teste.com` (Papel: `admin`)
 
-## 2. Tecnologias Utilizadas (Stack)
+### Cenário 1: Isolamento de Chamados (Solicitante)
+1. Faça login como `user_solicitante@teste.com` (ou simule o token JWT).
+2. Tente consultar a tabela `chamados`:
+   ```sql
+   select * from chamados;
+   ```
+3. **Resultado Esperado:** Apenas os chamados criados por este `user_id` devem ser retornados. Chamados de outros solicitantes não devem aparecer.
 
-O projeto foi construído utilizando as ferramentas mais modernas do ecossistema de desenvolvimento web:
+### Cenário 2: Visão Global (Técnico e Admin)
+1. Faça login como `user_tecnico@teste.com` ou `user_admin@teste.com`.
+2. Consulte a tabela `chamados`:
+   ```sql
+   select * from chamados;
+   ```
+3. **Resultado Esperado:** Todos os chamados do sistema devem ser listados.
 
-- **Next.js 16 (App Router)**: Framework React utilizado para renderização server-side (SSR) e construção de rotas.
-- **React 19**: Biblioteca base para a construção da interface de usuário.
-- **Tailwind CSS v4**: Framework CSS utility-first para estilização ágil e responsiva.
-- **Supabase**: Backend as a Service (BaaS) utilizado para:
-  - Banco de Dados PostgreSQL.
-  - Autenticação e Gestão de Sessões (`@supabase/ssr`).
-- **Zod**: Validação de schemas e payloads no backend.
-- **TypeScript**: Tipagem estática em toda a base de código para garantir segurança na transição de dados.
-- **Recharts**: Utilizado para visualização de dados (gráficos) e métricas na visão do administrador.
-- **ExcelJS / File-Saver**: Ferramentas para exportação de dados e relatórios no painel ADM.
+### Cenário 3: Privacidade de Mensagens Internas
+1. Como `user_admin@teste.com`, crie uma mensagem em um chamado qualquer definindo `is_internal = true`.
+2. Como `user_solicitante@teste.com` (dono do chamado), tente consultar a tabela `chamado_mensagens`:
+   ```sql
+   select * from chamado_mensagens where chamado_id = 'ID_DO_CHAMADO';
+   ```
+3. **Resultado Esperado:** A mensagem interna **NÃO** deve ser retornada. Apenas mensagens públicas (`is_internal = false`).
 
----
+### Cenário 4: Segurança de Uploads (Storage)
+1. Como `user_solicitante@teste.com`, tente listar objetos do bucket `chamados-anexos` em pastas de outros usuários:
+   - A resposta da API deve retornar vazio ou negado (devido à política do RLS baseada em `auth.uid() = foldername[1]`).
+2. Como admin ou técnico, a listagem/leitura em qualquer subpasta do bucket `chamados-anexos` deve ser permitida.
 
-## 3. Storage (Armazenamento de Anexos)
+### Cenário 5: Proteção contra Mudança de Papel (Role)
+1. Como `user_solicitante@teste.com`, tente executar um UPDATE no próprio perfil:
+   ```sql
+   update profiles set role = 'admin' where id = auth.uid();
+   ```
+2. **Resultado Esperado:** A trigger `protect_role_update` deve reverter a role silenciosamente ou a query passará sem alterar a coluna `role` real, pois o usuário não é `admin`.
 
-**NOVO EM PRODUÇÃO: Bucket Privado e URLs Assinadas**
-O sistema foi refatorado para utilizar *Bucket Privado* no Supabase, garantindo que anexos sensíveis (fotos internas, chamados sigilosos) não fiquem expostos a quem possui a URL.
+## Integra��o de E-mails (Resend) - Prepara��o Entrega 2
 
-Crie um bucket chamado `chamados-anexos` e configure-o como **Privado** (NÃO marque "Public bucket").
+A **Entrega 2** introduzir� notifica��es via e-mail utilizando a plataforma [Resend](https://resend.com).
 
-### Configuração de Políticas RLS do Storage
+### Pr�-requisitos
+1. Uma conta no Resend.
+2. Um dom�nio verificado no painel do Resend (ex: maplebeararaxa.com.br). O envio por dom�nios n�o verificados s� � permitido para o pr�prio e-mail da conta do Resend.
 
-Para permitir uploads públicos (qualquer pessoa abrindo chamado) e leitura apenas para o sistema (que gera a URL assinada na Server Action autenticada):
+### Vari�veis de Ambiente Necess�rias
+Adicione a seguinte vari�vel no seu .env.local (e no ambiente de produ��o da Vercel):
+\\\env
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxx
+NEXT_PUBLIC_APP_URL=https://seu-dominio.com.br
+\\\
+*(A NEXT_PUBLIC_APP_URL � essencial para montar os links nos bot�es do e-mail apontando para os detalhes do chamado).*
 
-1. Vá em `Storage` -> `chamados-anexos` -> `Policies`.
-2. Adicione uma política para **INSERT (Upload)**:
-   - Target Roles: `anon`, `authenticated`
-   - Allowed operation: `INSERT`
-   - Policy: `true` (Permitir qualquer um enviar imagens na hora de abrir o chamado).
-3. Adicione uma política para **SELECT (Leitura)**:
-   - Target Roles: `authenticated`
-   - Allowed operation: `SELECT`
-   - Policy: `true` (O servidor com permissão de administrador gera a URL assinada via Server Action para exibir na tela).
+### Fluxo de Envio Ass�ncrono
+1. Ao mudar o status ou adicionar uma mensagem num chamado, a *Server Action* invoca o m�todo de envio (ainda a ser implementado).
+2. O envio de e-mails ocorrer� de forma **n�o-bloqueante**, para n�o atrasar a resposta da interface ao usu�rio.
+3. Os templates de e-mail ser�o constru�dos usando React Email ou templates HTML puros da pr�pria plataforma Resend.
 
-O Frontend agora suporta apenas imagens de até 5MB e formatos JPEG, PNG e WEBP. Arquivos órfãos gerados por falha na criação do chamado são automaticamente limpos pela Action.
-
----
-
-## 4. Arquitetura e Padrões de Projeto
-
-- **Server Actions**: O projeto substitui o antigo padrão de API Routes do Next.js pelo uso de Server Actions (arquivos com a diretiva `'use server'`). Todas as interações com o banco de dados (como abrir um chamado, editar e deletar) ocorrem de maneira segura no servidor, em `app/actions/chamados.ts`.
-- **Proteção na Borda (Middleware)**: Utiliza `middleware.ts` para interceptar requisições. O middleware checa o cookie de sessão do Supabase de forma nativa e redireciona usuários que tentam acessar o painel administrativo (`/adm`) sem a devida autorização.
-- **Design System Customizado**: Em vez de bibliotecas pesadas de UI, o projeto opta por construir componentes customizados acessíveis usando Tailwind (ex: `ChamadoModal.tsx`, `ConfirmModal.tsx`, `ToastProvider.tsx`).
-
----
-
-## 5. Funcionalidades Principais
-
-### Para Usuários Comuns (Professores / Funcionários)
-- **Autenticação Institucional**: O sistema restringe cadastros apenas para usuários que possuam o domínio oficial da escola (`@maplebeararaxa.com.br`).
-- **Configuração de Variáveis de Ambiente**:
-```env
-NEXT_PUBLIC_SUPABASE_URL=seu_url_do_supabase
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima_do_supabase
-ADMIN_EMAILS=seu_email@maplebeararaxa.com.br,outro_email@maplebeararaxa.com.br
-
-# Rate Limit (Upstash Redis) - Opcional para desenvolvimento, obrigatório em Produção
-UPSTASH_REDIS_REST_URL=sua_url_do_upstash
-UPSTASH_REDIS_REST_TOKEN=seu_token_do_upstash
-```
-- **Abertura de Chamados**: Os usuários podem abrir chamados preenchendo Solicitante, Local, Categoria, Descrição e URL de Anexos.
-- **Acompanhamento (Meus Chamados)**: Tela específica onde o usuário consegue visualizar o andamento de seus próprios chamados através do vínculo direto pelo `user_id`.
-
-### Para Administradores (TI / Manutenção)
-- **Painel Administrativo (`/adm`)**: Área restrita. O acesso é verificado de forma segura baseando-se em uma variável de ambiente que define os administradores autorizados.
-- **Gestão de Chamados**:
-  - **Status**: O chamado tem o clico de vida `Pendente` → `Em Andamento` → `Concluído`.
-  - **Assumir Chamado**: Um admin pode "Assumir" um chamado pendente.
-  - **Finalizar Chamado**: Ao concluir um atendimento, é obrigatório registrar o **Tempo Gasto** (ex: 30m, 1h) e as **Notas de Resolução** sobre o que foi consertado.
-- **Estatísticas e Exportação**: Módulo focado em relatório gerencial, capaz de filtrar chamados e exportar históricos para planilhas `.xlsx`.
-
----
-
-## 5. Histórico de Evolução e Refatorações Recentes
-
-Ao longo do seu ciclo de vida, o projeto passou por auditorias e melhorias para se adequar ao padrão "Nível Sênior" de escalabilidade. A última grande refatoração trouxe os seguintes avanços:
-
-1. **Desacoplamento de Administradores**: Inicialmente os emails de administradores estavam *hardcoded* (fixos) no código do projeto (`lib/utils.ts`). Na refatoração, o sistema passou a ler a lista de e-mails dinamicamente através da variável de ambiente `ADMIN_EMAILS` contida no `.env.local` e no sistema de deploy da Vercel. Isso garante que a adição/remoção de admins seja feita sem a necessidade de novos deploys de código.
-2. **Correção de Anti-patterns no React**: Componentes complexos (como o `ChamadoModal.tsx`) que possuíam manipulação direta de DOM para renderização de erros visuais (via `document.getElementById`) foram totalmente convertidos para os princípios declarativos do React, gerindo estado via hooks (`useState`) e renderização condicional por classes Tailwind (`className`).
-3. **Consistência de Identidade do Usuário (user_id)**: Anteriormente as rotas permitiam criar chamados anônimos internamente, o que quebrava o filtro da view "Meus Chamados". A ação de `abrirChamado` no backend foi atualizada para extrair o JWT e a sessão via `@supabase/ssr` e automaticamente injetar o ID do dono na linha do banco de dados na coluna UUID `user_id`.
-4. **Alinhamento do Banco de Dados (Supabase)**: O schema relacional foi retificado na nuvem com comandos para ligar os chamados à tabela primária de usuários (`auth.users`), implementando também a proteção de domínio corporativo (`@maplebeararaxa.com.br`) nativamente dentro da configuração de segurança no dashboard do Supabase (para impedir bypass pelo frontend).
-
----
-
-## 6. Próximos Passos Sugeridos no Roadmap
-
-- **Integração Upstash (Redis)**: Migrar o atual Rate Limiter de "memória interna" para uma solução externa distribuída com Redis para mitigar ataques DDoS ou spam em infraestrutura Serverless.
-- **Sistema de Notificações Internas**: Acoplar uma trigger no banco que envie e-mail (via Resend ou serviço nativo) alertando o criador do chamado quando este for "Assumido" ou "Finalizado" por um admin. 
-- **Roles (RBAC) via Supabase**: Substituir o controle de administrador baseado em "Variáveis de Ambiente de E-mail" por tabelas de perfis (`profiles`) ou claims JWT atrelados a Row Level Security (RLS) diretamente no banco.
-
----
-_Documentação gerada automaticamente acompanhando as mudanças arquiteturais e manutenções do projeto._
