@@ -2,6 +2,7 @@
 
 import { createServerClient } from '@supabase/ssr';
 import { cookies, headers } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { extractFirstName, getAdminEmails } from '@/lib/utils';
 import { Ratelimit } from '@upstash/ratelimit';
@@ -31,6 +32,64 @@ async function getSupabase() {
       },
     }
   );
+}
+
+export async function registrarAvaliacao(chamadoId: string, nota: number, comentario?: string) {
+  const dados = z.object({
+    chamadoId: z.string().uuid(),
+    nota: z.number().int().min(1).max(5),
+    comentario: z.string().trim().max(500).optional(),
+  }).parse({ chamadoId, nota, comentario });
+
+  const supabase = await getSupabase();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('Usuário não autenticado.');
+
+  const { data: chamado, error: chamadoError } = await supabase
+    .from('chamados')
+    .select('id, status')
+    .eq('id', dados.chamadoId)
+    .eq('user_id', userData.user.id)
+    .single();
+
+  if (chamadoError || !chamado) throw new Error('Chamado não encontrado ou sem permissão.');
+  if (chamado.status !== 'Concluído') throw new Error('O chamado ainda não foi concluído.');
+
+  const { data, error } = await supabase
+    .from('chamado_avaliacoes')
+    .insert({
+      chamado_id: dados.chamadoId,
+      user_id: userData.user.id,
+      nota: dados.nota,
+      comentario: dados.comentario || null,
+    })
+    .select('chamado_id, nota, comentario, created_at')
+    .single();
+
+  if (error) {
+    if (error.code === '23505') throw new Error('Esta avaliação já foi enviada.');
+    throw new Error('Não foi possível enviar a avaliação.');
+  }
+
+  revalidatePath('/chamado/meus-chamados');
+  return data;
+}
+
+export async function obterMinhaAvaliacao(chamadoId: string) {
+  z.string().uuid().parse(chamadoId);
+  const supabase = await getSupabase();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('Usuário não autenticado.');
+
+  const { data, error } = await supabase
+    .from('chamado_avaliacoes')
+    .select('chamado_id, nota, comentario, created_at')
+    .eq('chamado_id', chamadoId)
+    .eq('user_id', userData.user.id)
+    .maybeSingle();
+
+  if (error) throw new Error('Não foi possível carregar a avaliação.');
+  return data;
 }
 
 // Configuração do Rate Limit (Upstash Redis)

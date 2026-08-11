@@ -9,6 +9,7 @@ import { Chamado } from '@/types/database';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import { Button } from '@/components/ui/Button';
+import { AvaliacaoChamado } from '@/components/AvaliacaoChamado';
 
 export default function MeusChamadosPage() {
   const router = useRouter();
@@ -132,6 +133,7 @@ export default function MeusChamadosPage() {
                         )}
                       </div>
                     </div>
+                    <AvaliacaoChamado chamadoId={chamado.id} />
                   </div>
                 )}
               </SurfaceCard>
