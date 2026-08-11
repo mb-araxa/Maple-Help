@@ -379,6 +379,48 @@ const tempoGastoSchema = z.string().min(1, 'O tempo gasto é obrigatório.').max
 /**
  * Finaliza um chamado atualizando o status, a resolução e data/hora atual.
  */
+/**
+ * Busca o relatorio completo de concluidos sem depender do limite maximo de
+ * linhas retornadas pela API do Supabase.
+ */
+export async function obterRelatorioCompleto(mes: number, ano: number) {
+  try {
+    await requireAdmin();
+    z.number().int().min(1).max(12).parse(mes);
+    z.number().int().min(2000).max(2100).parse(ano);
+
+    const supabase = await getSupabase();
+    const dataInicio = new Date(ano, mes - 1, 1).toISOString();
+    const dataFim = new Date(ano, mes, 1).toISOString();
+    const pageSize = 1000;
+    const resultado: Chamado[] = [];
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('chamados')
+        .select('*')
+        .eq('status', 'Conclu\u00eddo')
+        .gte('data_resolucao', dataInicio)
+        .lt('data_resolucao', dataFim)
+        .order('data_resolucao', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+
+      const lote = (data || []) as Chamado[];
+      resultado.push(...lote);
+
+      if (lote.length < pageSize) break;
+    }
+
+    return resultado;
+  } catch (error) {
+    console.error('Erro em obterRelatorioCompleto:', error);
+    const message = error instanceof Error ? error.message : 'Erro ao carregar dados';
+    throw new Error(`Nao foi possivel carregar o relatorio completo: ${message}`);
+  }
+}
+
 export async function finalizarChamado(id: string, resolucao: string, tempo_gasto: string) {
   try {
     await requireAdmin();

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { obterChamadosConcluidos, obterTodosChamadosConcluidos, obterEstatisticasMensais } from '@/app/actions/chamados';
+import { obterChamadosConcluidos, obterTodosChamadosConcluidos, obterEstatisticasMensais, obterRelatorioCompleto } from '@/app/actions/chamados';
 import { useToast } from '@/components/ToastProvider';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { Chamado } from '@/types/database';
@@ -28,6 +28,7 @@ export default function RelatoriosPage() {
   const [estatisticasMensais, setEstatisticasMensais] = useState<Chamado[]>([]); // Todos criados no mês
   const [totalChamados, setTotalChamados] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
+  const [exporting, setExporting] = useState<boolean>(false);
   
   // Estado de paginação
   const [page, setPage] = useState<number>(1);
@@ -143,84 +144,163 @@ export default function RelatoriosPage() {
     Quantidade: categoriasChart[key]
   })).sort((a, b) => b.Quantidade - a.Quantidade);
 
-  // Função para Exportar para Excel (.xlsx)
-  const exportarParaExcel = async () => {
-    if (chamados.length === 0) {
-      addToast('Não há dados para exportar neste período.', 'warning');
-      return;
-    }
+  const exportarPlanilhaCompleta = async () => {
+    if (exporting) return;
 
-    const workbook = new ExcelJS.Workbook();
-    
-    // Aba 1: Resumo
-    const sheetResumo = workbook.addWorksheet('Resumo');
-    
-    sheetResumo.columns = [
-      { header: 'Métrica / Categoria', key: 'metrica', width: 35 },
-      { header: 'Valor', key: 'valor', width: 20 },
-    ];
-    
-    // Estilo cabeçalho Resumo
-    sheetResumo.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    sheetResumo.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE31837' } }; // Vermelho Maple Bear
-    
-    sheetResumo.addRow({ metrica: 'Total de Chamados Concluídos', valor: totalChamados });
-    sheetResumo.addRow({ metrica: 'Categoria Mais Afetada', valor: categoriaMaisAfetada });
-    sheetResumo.addRow({ metrica: 'Média de Tempo de Atendimento', valor: mediaAtendimento() });
-    
-    sheetResumo.addRow([]);
-    sheetResumo.addRow({ metrica: 'CONTAGEM POR CATEGORIA', valor: '' });
-    sheetResumo.getRow(6).font = { bold: true };
-    
-    Object.entries(categoriasContagem).sort((a, b) => b[1] - a[1]).forEach(([cat, count]) => {
-      sheetResumo.addRow({ metrica: cat, valor: count });
-    });
+    setExporting(true);
 
-    // Aba 2: Dados
-    const sheetDados = workbook.addWorksheet('Dados Completos');
-    
-    sheetDados.columns = [
-      { header: 'Data Abertura', key: 'data_criacao', width: 20 },
-      { header: 'Data Conclusão', key: 'data_resolucao', width: 20 },
-      { header: 'Responsável', key: 'responsavel', width: 20 },
-      { header: 'Solicitante', key: 'solicitante', width: 25 },
-      { header: 'Local/Sala', key: 'local', width: 20 },
-      { header: 'Categoria', key: 'categoria', width: 20 },
-      { header: 'Descrição do Problema', key: 'descricao', width: 50 },
-      { header: 'Resolução Aplicada', key: 'resolucao', width: 50 },
-      { header: 'Tempo Gasto', key: 'tempo_gasto', width: 15 },
-    ];
+    try {
+      // A consulta acontece no clique para a exportacao nunca depender de um
+      // estado que ainda esteja carregando em segundo plano.
+      const dadosExportacao = await obterRelatorioCompleto(mes, ano);
 
-    // Estilo cabeçalho Dados
-    sheetDados.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    sheetDados.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE31837' } };
+      if (dadosExportacao.length === 0) {
+        addToast('N\u00e3o h\u00e1 dados para exportar neste per\u00edodo.', 'warning');
+        return;
+      }
 
-    // Exportar todos os chamados do mês e não só os da página atual
-    todosChamados.forEach(c => {
-      sheetDados.addRow({
-        data_criacao: new Date(c.data_criacao).toLocaleString('pt-BR'),
-        data_resolucao: c.data_resolucao ? new Date(c.data_resolucao).toLocaleString('pt-BR') : '',
-        responsavel: c.responsavel || 'Desconhecido',
-        solicitante: c.solicitante,
-        local: c.local,
-        categoria: c.categoria,
-        descricao: c.descricao,
-        resolucao: c.resolucao,
-        tempo_gasto: c.tempo_gasto || '-',
+      setTodosChamados(dadosExportacao);
+
+      const contagemCategorias = dadosExportacao.reduce((acc, chamado) => {
+        acc[chamado.categoria] = (acc[chamado.categoria] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const categoriaPrincipal = Object.entries(contagemCategorias)
+        .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+
+      const temposResolucao = dadosExportacao
+        .filter(c => c.data_criacao && c.data_resolucao)
+        .map(c => new Date(c.data_resolucao!).getTime() - new Date(c.data_criacao).getTime())
+        .filter(tempo => Number.isFinite(tempo) && tempo >= 0);
+
+      const mediaMs = temposResolucao.length > 0
+        ? temposResolucao.reduce((total, tempo) => total + tempo, 0) / temposResolucao.length
+        : 0;
+
+      const formatarMedia = (tempoMs: number) => {
+        const horas = tempoMs / (1000 * 60 * 60);
+        if (horas < 1) return `${Math.round(tempoMs / (1000 * 60))} min`;
+        if (horas > 24) return `${(horas / 24).toFixed(1)} dias`;
+        return `${horas.toFixed(1)}h`;
+      };
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Maple Help';
+      workbook.created = new Date();
+      workbook.modified = new Date();
+      workbook.subject = `Relat\u00f3rio de chamados conclu\u00eddos - ${mes.toString().padStart(2, '0')}/${ano}`;
+
+      const sheetResumo = workbook.addWorksheet('Resumo', {
+        views: [{ state: 'frozen', ySplit: 1, showGridLines: false }],
       });
-    });
 
-    // Ajustar quebra de texto (wrap) e alinhamento
-    sheetDados.getColumn('descricao').alignment = { wrapText: true, vertical: 'top' };
-    sheetDados.getColumn('resolucao').alignment = { wrapText: true, vertical: 'top' };
-    sheetDados.getColumn('data_criacao').alignment = { vertical: 'top' };
-    sheetDados.getColumn('data_resolucao').alignment = { vertical: 'top' };
-    sheetDados.getColumn('solicitante').alignment = { vertical: 'top' };
+      sheetResumo.columns = [
+        { key: 'metrica', width: 38 },
+        { key: 'valor', width: 24 },
+      ];
+      sheetResumo.mergeCells('A1:B1');
+      sheetResumo.getCell('A1').value = 'Relat\u00f3rio Maple Help';
+      sheetResumo.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FFFFFFFF' } };
+      sheetResumo.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
+      sheetResumo.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE31837' } };
+      sheetResumo.getRow(1).height = 32;
+      sheetResumo.addRow({ metrica: 'Per\u00edodo', valor: `${mes.toString().padStart(2, '0')}/${ano}` });
+      sheetResumo.addRow({ metrica: 'Total de Chamados Conclu\u00eddos', valor: dadosExportacao.length });
+      sheetResumo.addRow({ metrica: 'Categoria Mais Afetada', valor: categoriaPrincipal });
+      sheetResumo.addRow({ metrica: 'M\u00e9dia de Tempo de Atendimento', valor: formatarMedia(mediaMs) });
+      sheetResumo.addRow({});
+      sheetResumo.addRow({ metrica: 'CONTAGEM POR CATEGORIA', valor: 'QUANTIDADE' });
+      sheetResumo.getRow(7).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      sheetResumo.getRow(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF27272A' } };
 
-    // Gerar arquivo e disparar download
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    saveAs(blob, `Relatorio-Maple-Help-${mes.toString().padStart(2, '0')}-${ano}.xlsx`);
+      Object.entries(contagemCategorias).sort((a, b) => b[1] - a[1]).forEach(([categoria, quantidade]) => {
+        sheetResumo.addRow({ metrica: categoria, valor: quantidade });
+      });
+
+      const sheetDados = workbook.addWorksheet('Dados Completos', {
+        views: [{ state: 'frozen', ySplit: 5, showGridLines: false }],
+      });
+
+      sheetDados.columns = [
+        { header: 'ID do Chamado', key: 'id', width: 38 },
+        { header: 'Status', key: 'status', width: 18 },
+        { header: 'Data Abertura', key: 'data_criacao', width: 21 },
+        { header: 'Data Conclus\u00e3o', key: 'data_resolucao', width: 21 },
+        { header: 'Respons\u00e1vel', key: 'responsavel', width: 20 },
+        { header: 'Solicitante', key: 'solicitante', width: 25 },
+        { header: 'Local/Sala', key: 'local', width: 24 },
+        { header: 'Categoria', key: 'categoria', width: 22 },
+        { header: 'Descri\u00e7\u00e3o do Problema', key: 'descricao', width: 48 },
+        { header: 'Resolu\u00e7\u00e3o Aplicada', key: 'resolucao', width: 48 },
+        { header: 'Tempo Gasto', key: 'tempo_gasto', width: 16 },
+        { header: 'Anexo', key: 'anexo_url', width: 42 },
+        { header: 'ID do Usu\u00e1rio', key: 'user_id', width: 38 },
+      ];
+
+      sheetDados.insertRows(1, [
+        ['Relat\u00f3rio completo de chamados conclu\u00eddos'],
+        ['Per\u00edodo', `${mes.toString().padStart(2, '0')}/${ano}`],
+        ['Gerado em', new Date()],
+        [],
+      ]);
+      sheetDados.mergeCells('A1:M1');
+      sheetDados.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FFFFFFFF' } };
+      sheetDados.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE31837' } };
+      sheetDados.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
+      sheetDados.getRow(1).height = 32;
+      sheetDados.getCell('B3').numFmt = 'dd/mm/yyyy hh:mm';
+      sheetDados.getRow(5).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      sheetDados.getRow(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF27272A' } };
+      sheetDados.getRow(5).alignment = { vertical: 'middle' };
+      sheetDados.getRow(5).height = 28;
+      sheetDados.autoFilter = { from: 'A5', to: 'M5' };
+
+      dadosExportacao.forEach(chamado => {
+        const row = sheetDados.addRow({
+          id: chamado.id,
+          status: chamado.status,
+          data_criacao: new Date(chamado.data_criacao),
+          data_resolucao: chamado.data_resolucao ? new Date(chamado.data_resolucao) : null,
+          responsavel: chamado.responsavel || 'N\u00e3o informado',
+          solicitante: chamado.solicitante,
+          local: chamado.local,
+          categoria: chamado.categoria,
+          descricao: chamado.descricao,
+          resolucao: chamado.resolucao || 'N\u00e3o informado',
+          tempo_gasto: chamado.tempo_gasto || 'N\u00e3o informado',
+          anexo_url: chamado.anexo_url || '',
+          user_id: chamado.user_id || '',
+        });
+        row.alignment = { vertical: 'top' };
+      });
+
+      sheetDados.getColumn('descricao').alignment = { wrapText: true, vertical: 'top' };
+      sheetDados.getColumn('resolucao').alignment = { wrapText: true, vertical: 'top' };
+      sheetDados.getColumn('data_criacao').numFmt = 'dd/mm/yyyy hh:mm';
+      sheetDados.getColumn('data_resolucao').numFmt = 'dd/mm/yyyy hh:mm';
+
+      sheetDados.eachRow((row, rowNumber) => {
+        if (rowNumber > 5) {
+          row.height = 42;
+          row.border = {
+            bottom: { style: 'thin', color: { argb: 'FFE4E4E7' } },
+          };
+        }
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      saveAs(blob, `Relatorio-Maple-Help-${mes.toString().padStart(2, '0')}-${ano}.xlsx`);
+      addToast(`Planilha exportada com ${dadosExportacao.length} chamados.`, 'success');
+    } catch (error) {
+      console.error('Erro ao exportar relatorio:', error);
+      addToast('N\u00e3o foi poss\u00edvel gerar a planilha. Tente novamente.', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -265,7 +345,9 @@ export default function RelatoriosPage() {
           </select>
 
           <Button 
-            onClick={exportarParaExcel}
+            onClick={exportarPlanilhaCompleta}
+            isLoading={exporting}
+            disabled={exporting}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
