@@ -13,7 +13,7 @@ export function ChamadoCard({ chamado, onClick }: ChamadoCardProps) {
       onClick={onClick}
       level={2}
       interactive
-      className="p-4 flex flex-col gap-3 group relative overflow-hidden"
+      className="shrink-0 p-4 flex flex-col gap-3 group relative overflow-hidden"
     >
       <div className="flex justify-between items-start">
         <div>
