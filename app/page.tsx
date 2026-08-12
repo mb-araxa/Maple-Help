@@ -188,7 +188,7 @@ export default function LoginPage() {
         </div>
         
         {/* Lado Direito - Imagem e Logo (Painel Escuro Institucional) */}
-        <div className="hidden md:flex w-1/2 bg-[#111315] items-center justify-center p-12 relative overflow-hidden">
+        <div className="hidden md:flex w-1/2 bg-brand-500 items-center justify-center p-12 relative overflow-hidden">
           <div className="absolute inset-0 bg-brand-500/5 z-0"></div>
           {/* Logo da Maple Bear Centralizada */}
           <div className="relative z-10 opacity-90 transition-opacity hover:opacity-100">
