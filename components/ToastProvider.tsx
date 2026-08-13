@@ -13,6 +13,7 @@ interface Toast {
 
 interface ToastContextType {
   addToast: (message: string, variant?: ToastVariant) => void;
+  clearToasts: () => void;
 }
 
 // ─── Context ─────────────────────────────────────────────
@@ -77,8 +78,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  const clearToasts = useCallback(() => {
+    setToasts([]);
+  }, []);
+
   return (
-    <ToastContext.Provider value={{ addToast }}>
+    <ToastContext.Provider value={{ addToast, clearToasts }}>
       {children}
 
       {/* Container de Toasts — canto superior direito */}

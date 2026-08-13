@@ -11,7 +11,7 @@ import { FormField } from '@/components/ui/FormField';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { addToast } = useToast();
+  const { addToast, clearToasts } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,6 +20,24 @@ export default function LoginPage() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleAuthModeChange = () => {
+    clearToasts();
+    setPassword('');
+    setShowPassword(false);
+    setIsSignUp((currentMode) => !currentMode);
+  };
+
+  const openResetPassword = () => {
+    clearToasts();
+    setShowResetPassword(true);
+  };
+
+  const closeResetPassword = () => {
+    clearToasts();
+    setResetEmail('');
+    setShowResetPassword(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,7 +131,9 @@ export default function LoginPage() {
               </div>
               <input
                 id="email"
+                name="email"
                 type="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -130,7 +150,9 @@ export default function LoginPage() {
               </div>
               <input
                 id="password"
+                name="password"
                 type={showPassword ? 'text' : 'password'}
+                autoComplete={isSignUp ? 'new-password' : 'current-password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -139,7 +161,9 @@ export default function LoginPage() {
               />
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowPassword((isVisible) => !isVisible)}
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                aria-pressed={showPassword}
                 className="absolute inset-y-0 right-0 pr-4 flex items-center text-text-subtle hover:text-text focus:outline-none cursor-pointer"
               >
                 {showPassword ? (
@@ -159,7 +183,7 @@ export default function LoginPage() {
               <div className="flex items-center justify-end -mt-2">
                 <button
                   type="button"
-                  onClick={() => setShowResetPassword(true)}
+                  onClick={openResetPassword}
                   className="text-sm font-semibold text-text-muted hover:text-brand-500 transition-colors"
                 >
                   Esqueceu a senha?
@@ -179,7 +203,8 @@ export default function LoginPage() {
           <p className="text-center text-sm font-medium text-text-muted mt-8">
             {isSignUp ? 'Já tem uma conta?' : 'Ainda não tem cadastro?'} {' '}
             <button 
-              onClick={() => setIsSignUp(!isSignUp)}
+              type="button"
+              onClick={handleAuthModeChange}
               className="font-bold text-text hover:text-brand-500 hover:underline transition-colors"
             >
               {isSignUp ? 'Faça Login aqui' : 'Criar uma conta'}
@@ -207,7 +232,7 @@ export default function LoginPage() {
       {showResetPassword && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm"
-          onClick={() => setShowResetPassword(false)}
+          onClick={closeResetPassword}
           role="dialog"
           aria-modal="true"
         >
@@ -224,7 +249,9 @@ export default function LoginPage() {
                 <FormField label="E-mail" required htmlFor="resetEmail">
                   <input
                     id="resetEmail"
+                    name="resetEmail"
                     type="email"
+                    autoComplete="email"
                     required
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
@@ -236,7 +263,7 @@ export default function LoginPage() {
                 <div className="flex gap-3 justify-end border-t border-border pt-4">
                   <Button
                     type="button"
-                    onClick={() => setShowResetPassword(false)}
+                    onClick={closeResetPassword}
                     variant="secondary"
                   >
                     Cancelar
