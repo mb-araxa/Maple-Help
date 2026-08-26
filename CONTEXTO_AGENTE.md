@@ -1,64 +1,123 @@
-# Contexto do Projeto: Maple Help 🍁
+# Contexto operacional do Maple Help
 
-## 🤖 Para o Agente IA (Eu do futuro / em outro PC)
-Se você está lendo este arquivo, você acabou de ser iniciado em um novo computador. Este arquivo serve para te dar todo o contexto do que já fizemos e quais são os próximos passos. Leia atentamente antes de sugerir novas mudanças.
+Este arquivo registra o estado atual do projeto para futuras sessões de manutenção. Ele complementa o `README.md` e a `DOCUMENTATION.md`; não substitui a leitura do código nem do esquema SQL.
 
-## 📌 O que é o projeto?
-O **Maple Help** é um sistema interno de helpdesk (abertura de chamados de TI e Manutenção) feito sob medida para uma escola da franquia **Maple Bear**. 
+## Resumo
 
-### 💻 Stack Tecnológica
-- **Framework:** Next.js (App Router, Turbopack)
-- **Estilização:** Tailwind CSS (foco em UI premium, moderna, sombras suaves, cores da marca)
-- **Banco de Dados & Autenticação:** Supabase (PostgreSQL)
-- **Linguagem:** TypeScript
+- Produto: sistema interno de chamados de TI da Maple Bear Araxá.
+- Público: colaboradores com e-mail institucional e equipe administradora.
+- Stack: Next.js 16, React 19, TypeScript, Tailwind CSS 4, Supabase e Upstash.
+- Branch principal atual: `main`.
+- Fase: estabilização do produto e migração da infraestrutura para contas corporativas.
 
-### 🎨 Identidade Visual (Design System)
-- **Cor Primária (Vermelho Maple Bear):** `#E31837`
-- **Tons Escuros (Fundos e Contraste):** `#111315`, `zinc-900`, `zinc-800`
-- **Estilo:** Clean, muito uso de sombras (depth/profundidade), cantos arredondados (`rounded-2xl`, `rounded-3xl`), animações de hover e interfaces amigáveis para professores.
+## Estado da migração
 
----
+### Preparado
 
-## 🚀 O que já foi implementado (Blocos 1 ao 4 concluídos)
+- O esquema atual do banco foi consolidado em `supabase/maple_help_schema.sql`.
+- O repositório contém as dependências e configurações usadas pelo aplicativo atual.
+- A conta corporativa de destino foi acessada para preparação da mudança.
 
-1. **Configuração Supabase & Auth:**
-   - Supabase configurado no arquivo `lib/supabase.ts`. 
-   - *Nota: As variáveis de ambiente (`NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`) precisam ser configuradas no arquivo `.env.local` deste novo computador.*
+### Pendente de confirmação
 
-2. **Tela de Login (`app/page.tsx`):**
-   - Tela dividida (split-screen). Esquerda branca com formulário, direita escura (`bg-zinc-800`) com a imagem `maple_bear_login.png`.
-   - Lógica de Login e Cadastro alternável na mesma tela utilizando Supabase Auth.
+- Aplicação e validação do esquema no Supabase corporativo.
+- Estratégia e execução da transferência de usuários, chamados, avaliações e anexos.
+- Configuração final do Auth, Storage e Realtime no novo projeto.
+- Configuração das variáveis no projeto Vercel corporativo.
+- Validação ponta a ponta da implantação corporativa.
+- Desativação das integrações antigas.
 
-3. **Hub Central (`app/menu/page.tsx`):**
-   - Tela de redirecionamento pós-login.
-   - Cabeçalho flutuante (card 3D) com nome do usuário e botão minimalista de logout.
-   - Cards de navegação: "TI & Computadores" (leva para `/chamado`), "Manutenção Estrutural" (Em Breve).
-   - **Regra de Negócio (Painel ADM):** O botão para o painel de administração (`/adm`) **só é renderizado** se o e-mail do usuário logado pertencer à equipe de TI (ex: contém `isaque@maple.local` ou `isaque@maplebear.com`).
+Não afirmar que a migração foi concluída apenas porque as contas corporativas estão acessíveis. Não remover nem substituir a infraestrutura antiga antes da validação do novo ambiente e da definição de um caminho de retorno.
 
-4. **Abertura de Chamados (`app/chamado/page.tsx`):**
-   - Formulário limpo e validado para professores.
-   - Usa o mascote `maple_bear_chamado_02.png` no topo.
-   - Salva os dados no Supabase usando a Server Action em `app/actions/chamados.ts`.
+## Funcionalidades confirmadas no código
 
----
+- Login, cadastro e recuperação de senha com domínio institucional.
+- Menu com acesso a TI, Meus Chamados e painel administrativo condicional.
+- Abertura de chamados de TI com imagem opcional.
+- Acompanhamento dos chamados do usuário.
+- Avaliação de atendimentos concluídos.
+- Painel administrativo em tempo real.
+- Ações de assumir, concluir e excluir chamado.
+- Relatórios mensais com métricas, gráficos e exportação completa em Excel.
+- Rate limit com Upstash e fallback local em memória.
 
-5. **Painel de Administração (`app/adm` e sub-rotas):**
-   - Interface premium com abas/filtros para listagem de chamados.
-   - Componente `ChamadoCard` para visualização individual de chamados.
-   - Componente `ChamadoModal` para ver detalhes e ações do chamado (mudar status, deletar).
-   - Confirmações de deleção seguras com `ConfirmModal`.
-   - Feedback de ações em toda a plataforma através do `ToastProvider`.
-   - Seção de `relatorios` implementada.
+## Limites atuais
 
----
+- Manutenção Estrutural está marcada como “Em breve” e não possui fluxo próprio.
+- Não há notificação automática de atualização do chamado.
+- Os testes existentes são unitários e cobrem apenas parte das Server Actions.
+- A proteção de administrador depende de `ADMIN_EMAILS`; sem essa variável, ninguém é reconhecido como administrador pela aplicação.
+- O filtro de anos da tela de relatórios contém atualmente 2026 e 2027.
+- O esquema de migração preserva as políticas de RLS existentes. Qualquer reforço de segurança deve ser planejado e entregue separadamente para não alterar a cópia solicitada.
 
-## 🎯 Próximo Passo: Bloco 6 (Manutenção Estrutural e Refinamentos)
+## Regras de negócio que devem ser preservadas
 
-O núcleo do sistema de chamados de TI está operando com sucesso. O próximo objetivo que o usuário (Isaque) pode pedir é:
+1. Somente e-mails `@maplebeararaxa.com.br` podem criar contas pela interface.
+2. Administradores são definidos por correspondência exata em `ADMIN_EMAILS`.
+3. Um chamado nasce como `Pendente`.
+4. Ao ser assumido, passa para `Em Andamento` e recebe um responsável.
+5. Ao ser finalizado, passa para `Concluído` e recebe solução, tempo gasto e data de resolução.
+6. Somente o solicitante pode avaliar o próprio chamado concluído.
+7. Cada chamado aceita apenas uma avaliação.
+8. Imagens aceitas: JPEG, PNG e WEBP, com até 5 MB.
+9. A exportação deve conter todos os concluídos do período, não apenas a página exibida.
+10. O módulo ativo é TI; Manutenção Estrutural continua fora do escopo até uma decisão explícita.
 
-**O que você deve implementar a seguir quando o usuário pedir:**
-1. **Módulo de Manutenção Estrutural:** Habilitar o card de "Manutenção Estrutural" no menu (`app/menu/page.tsx`) e criar o fluxo de chamados específico para manutenção, separando os chamados de TI dos chamados de Manutenção.
-2. **Sistema de Notificações:** Envio de e-mail ou notificação quando um chamado for atualizado ou respondido.
-3. **Aprimoramentos de Relatórios:** Expandir a rota `/adm/relatorios` para incluir gráficos de chamados fechados vs abertos, tempo médio de resolução, etc.
+## Pontos principais do código
 
-Vá em frente e ajude o Isaque a continuar evoluindo o melhor sistema de chamados que a escola já viu! 🚀
+| Área | Arquivo |
+| --- | --- |
+| Login e cadastro | `app/page.tsx` |
+| Menu principal | `app/menu/page.tsx` |
+| Abertura de chamado | `app/chamado/page.tsx` e `components/ChamadoForm.tsx` |
+| Meus Chamados | `app/chamado/meus-chamados/page.tsx` |
+| Server Actions | `app/actions/chamados.ts` |
+| Painel administrativo | `app/adm/page.tsx` |
+| Relatórios e Excel | `app/adm/relatorios/page.tsx` |
+| Proteção de rotas | `proxy.ts` |
+| Permissões administrativas | `lib/utils.ts` |
+| Tipos do domínio | `types/database.ts` |
+| Esquema para migração | `supabase/maple_help_schema.sql` |
+
+## Variáveis esperadas
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+ADMIN_EMAILS=
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+```
+
+As duas variáveis do Upstash são recomendadas em produção. Sem elas, o sistema usa o fallback em memória, que não é compartilhado entre instâncias. Nunca copiar valores sensíveis para este arquivo, para commits ou para mensagens públicas.
+
+## Ordem de trabalho recomendada nesta fase
+
+1. Preservar o ambiente atual enquanto a migração é preparada.
+2. Validar o esquema e os serviços no Supabase corporativo.
+3. Configurar o projeto Vercel corporativo com as variáveis corretas.
+4. Testar autenticação, abertura, anexos, administração, avaliação e relatórios.
+5. Formalizar a troca de produção e o plano de retorno.
+6. Somente depois retomar novas funcionalidades, como manutenção ou notificações.
+
+## Critério para considerar a migração concluída
+
+A migração só está concluída quando:
+
+- o domínio de produção aponta para a implantação corporativa aprovada;
+- usuários autorizados conseguem entrar;
+- dados e anexos necessários estão disponíveis;
+- um chamado percorre o fluxo completo;
+- o painel em tempo real atualiza corretamente;
+- o relatório Excel contém os dados do período;
+- as permissões de usuário comum e administrador foram testadas;
+- a equipe aprovou a troca e o caminho de retorno está documentado.
+
+## Regra de atualização da documentação
+
+Ao concluir uma mudança relevante:
+
+- atualizar o `README.md` se ela afetar instalação, escopo ou uso;
+- atualizar a `DOCUMENTATION.md` se ela afetar arquitetura, fluxo, dados ou operação;
+- atualizar este arquivo se ela alterar a fase, pendências ou decisões vigentes;
+- remover informações superadas em vez de acumular planos contraditórios.
