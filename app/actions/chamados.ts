@@ -34,6 +34,23 @@ async function getSupabase() {
   );
 }
 
+type SupabaseServerClient = Awaited<ReturnType<typeof getSupabase>>;
+
+function adicionarUrlsPublicasDosAnexos(
+  supabase: SupabaseServerClient,
+  chamados: Chamado[]
+) {
+  for (const chamado of chamados) {
+    if (!chamado.anexo_url || chamado.anexo_url.startsWith('http')) continue;
+
+    const { data } = supabase.storage
+      .from('chamados-anexos')
+      .getPublicUrl(chamado.anexo_url);
+
+    chamado.anexo_url = data.publicUrl;
+  }
+}
+
 export async function registrarAvaliacao(chamadoId: string, nota: number, comentario?: string) {
   const dados = z.object({
     chamadoId: z.string().uuid(),
@@ -243,12 +260,7 @@ export async function obterChamadosAbertos() {
     }
 
     const chamados = data as Chamado[];
-    for (const c of chamados) {
-      if (c.anexo_url && !c.anexo_url.startsWith('http')) {
-        const { data: signed } = await supabase.storage.from('chamados-anexos').createSignedUrl(c.anexo_url, 3600);
-        if (signed?.signedUrl) c.anexo_url = signed.signedUrl;
-      }
-    }
+    adicionarUrlsPublicasDosAnexos(supabase, chamados);
 
     return chamados;
   } catch (error) {
@@ -283,12 +295,7 @@ export async function obterChamadosConcluidosHoje() {
     }
 
     const chamados = data as Chamado[];
-    for (const c of chamados) {
-      if (c.anexo_url && !c.anexo_url.startsWith('http')) {
-        const { data: signed } = await supabase.storage.from('chamados-anexos').createSignedUrl(c.anexo_url, 3600);
-        if (signed?.signedUrl) c.anexo_url = signed.signedUrl;
-      }
-    }
+    adicionarUrlsPublicasDosAnexos(supabase, chamados);
 
     return chamados;
   } catch (error) {
@@ -323,12 +330,7 @@ export async function obterChamadosConcluidos(mes: number, ano: number, page: nu
     if (error) throw error;
     
     const chamados = data as Chamado[];
-    for (const c of chamados) {
-      if (c.anexo_url && !c.anexo_url.startsWith('http')) {
-        const { data: signed } = await supabase.storage.from('chamados-anexos').createSignedUrl(c.anexo_url, 3600);
-        if (signed?.signedUrl) c.anexo_url = signed.signedUrl;
-      }
-    }
+    adicionarUrlsPublicasDosAnexos(supabase, chamados);
 
     return { 
       data: chamados, 
@@ -539,12 +541,7 @@ export async function obterMeusChamados() {
     }
 
     const chamados = data as Chamado[];
-    for (const c of chamados) {
-      if (c.anexo_url && !c.anexo_url.startsWith('http')) {
-        const { data: signed } = await supabase.storage.from('chamados-anexos').createSignedUrl(c.anexo_url, 3600);
-        if (signed?.signedUrl) c.anexo_url = signed.signedUrl;
-      }
-    }
+    adicionarUrlsPublicasDosAnexos(supabase, chamados);
 
     return chamados;
   } catch (error) {
