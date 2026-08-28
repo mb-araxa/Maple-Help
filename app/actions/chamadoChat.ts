@@ -53,7 +53,8 @@ const chatRatelimit = redis ? new Ratelimit({
 
 /**
  * Validação de sessão segura via auth.getUser().
- * Retorna o usuário autenticado e indica se possui permissão de administrador via public.app_admins.
+ * Retorna o usuário autenticado e indica se possui permissão de administrador via public.app_admins
+ * ou fallback para ADMIN_EMAILS caso a migration ainda esteja pendente.
  */
 async function getAuthenticatedUser() {
   const supabase = await getSupabase();
@@ -67,13 +68,20 @@ async function getAuthenticatedUser() {
   let isAdmin = false;
 
   if (email) {
-    const { data: adminRecord } = await supabase
+    const { data: adminRecord, error: adminError } = await supabase
       .from('app_admins')
       .select('email')
       .eq('email', email)
       .maybeSingle();
 
-    isAdmin = !!adminRecord;
+    if (adminError && adminError.code === '42P01') {
+      isAdmin = (process.env.ADMIN_EMAILS || '')
+        .split(',')
+        .map(e => e.trim().toLowerCase())
+        .includes(email);
+    } else {
+      isAdmin = !!adminRecord;
+    }
   }
 
   return { supabase, user, email, isAdmin };
@@ -134,6 +142,10 @@ export async function obterMensagensDoChamado(
       .limit(limit + 1);
 
     if (error) {
+      if (error.code === '42P01') {
+        console.warn('Tabela chamado_mensagens ainda não existe no Supabase. Retornando lista vazia.');
+        return { mensagens: [], hasMore: false };
+      }
       throw error;
     }
 
@@ -229,19 +241,26 @@ export async function enviarMensagemDoChamado(
       .single();
 
     if (error) {
+      if (error.code === '42P01') {
+        throw new Error('A tabela do chat ainda não foi criada no banco de dados. Execute a migration 20260828185023_chamado_chat.sql no Supabase.');
+      }
       throw error;
     }
 
     const mensagemCriada = data as ChamadoMensagem;
 
-    // Atualiza imediatamente a última leitura do autor via upsert no banco
-    await supabase
-      .from('chamado_chat_leituras')
-      .upsert({
-        chamado_id: chamadoId,
-        user_id: user.id,
-        last_read_at: new Date().toISOString(),
-      }, { onConflict: 'chamado_id,user_id' });
+    // Atualiza imediatamente a última leitura do autor via upsert no banco (com fallback seguro se a tabela não existir)
+    try {
+      await supabase
+        .from('chamado_chat_leituras')
+        .upsert({
+          chamado_id: chamadoId,
+          user_id: user.id,
+          last_read_at: new Date().toISOString(),
+        }, { onConflict: 'chamado_id,user_id' });
+    } catch {
+      // Falha silenciosa de leitura caso a tabela ainda não exista
+    }
 
     return mensagemCriada;
   } catch (error) {
@@ -285,7 +304,7 @@ export async function marcarChatComoLido(
         last_read_at: maxMessageCreatedAt || new Date().toISOString(),
       }, { onConflict: 'chamado_id,user_id' });
 
-    if (error) {
+    if (error && error.code !== '42P01') {
       throw error;
     }
 
@@ -304,10 +323,14 @@ export async function obterContadoresNaoLidos(): Promise<ContadoresNaoLidos> {
     const { supabase, user, isAdmin } = await getAuthenticatedUser();
 
     // 1. Obtém leituras registradas pelo usuário
-    const { data: leiturasData } = await supabase
+    const { data: leiturasData, error: leiturasError } = await supabase
       .from('chamado_chat_leituras')
       .select('chamado_id, last_read_at')
       .eq('user_id', user.id);
+
+    if (leiturasError && leiturasError.code === '42P01') {
+      return {};
+    }
 
     const mapaLeituras = new Map<string, string>();
     (leiturasData || []).forEach(l => {

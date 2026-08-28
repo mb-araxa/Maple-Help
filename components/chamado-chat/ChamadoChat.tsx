@@ -90,7 +90,11 @@ export function ChamadoChat({
       setTimeout(() => scrollToBottom(false), 50);
     } catch (err) {
       console.error('Erro ao carregar mensagens do chat:', err);
-      setError(err instanceof Error ? err.message : 'Não foi possível carregar a conversa.');
+      let errorMessage = err instanceof Error ? err.message : 'Não foi possível carregar a conversa.';
+      if (errorMessage.includes('Server Components render') || errorMessage.includes('digest')) {
+        errorMessage = 'Não foi possível carregar a conversa. Se for a primeira execução, certifique-se de que a migration do chat foi aplicada no Supabase.';
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

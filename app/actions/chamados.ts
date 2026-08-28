@@ -152,7 +152,16 @@ async function requireAdmin() {
     .eq('email', email)
     .maybeSingle();
 
-  if (adminError || !adminData) {
+  const isEmailAdminEnv = (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .includes(email);
+
+  const isAdmin = (adminError && adminError.code === '42P01')
+    ? isEmailAdminEnv
+    : !!adminData;
+
+  if (!isAdmin) {
     throw new Error('Acesso negado: você não tem permissão de administrador.');
   }
 
@@ -169,11 +178,19 @@ export async function checkIsAdmin(): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user?.email) return false;
 
-    const { data } = await supabase
+    const email = user.email.toLowerCase();
+    const { data, error } = await supabase
       .from('app_admins')
       .select('email')
-      .eq('email', user.email.toLowerCase())
+      .eq('email', email)
       .maybeSingle();
+
+    if (error && error.code === '42P01') {
+      return (process.env.ADMIN_EMAILS || '')
+        .split(',')
+        .map(e => e.trim().toLowerCase())
+        .includes(email);
+    }
 
     return !!data;
   } catch {

@@ -43,13 +43,20 @@ export async function proxy(request: NextRequest) {
     }
 
     // Consulta a fonte única no banco (public.app_admins) protegida por RLS
-    const { data: adminRecord } = await supabase
+    const { data: adminRecord, error: adminError } = await supabase
       .from('app_admins')
       .select('email')
       .eq('email', user.email.toLowerCase())
       .maybeSingle();
 
-    if (!adminRecord) {
+    const envEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
+    const isEmailAdminEnv = envEmails.includes(user.email.toLowerCase());
+
+    const isAdmin = (adminError && adminError.code === '42P01')
+      ? isEmailAdminEnv
+      : !!adminRecord;
+
+    if (!isAdmin) {
       const url = request.nextUrl.clone();
       url.pathname = '/menu';
       return NextResponse.redirect(url);
