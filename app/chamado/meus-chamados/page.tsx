@@ -105,9 +105,9 @@ export default function MeusChamadosPage() {
         {/* Botão Voltar */}
         <button 
           onClick={() => router.push('/menu')}
-          className="mb-8 flex items-center text-text-subtle hover:text-text transition-colors font-medium text-sm gap-2 cursor-pointer"
+          className="mb-8 flex items-center text-zinc-700 hover:text-zinc-950 transition-colors font-semibold text-sm gap-2 cursor-pointer"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.25} stroke="currentColor" className="w-4 h-4 text-zinc-600">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
           </svg>
           Voltar para o Menu

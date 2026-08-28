@@ -93,9 +93,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="p-4 border-t border-border mt-auto">
           <Link 
             href="/menu"
-            className="flex items-center gap-3 px-4 py-2 text-sm text-text-subtle hover:text-text hover:bg-surface-muted rounded-lg transition-colors font-medium"
+            className="flex items-center gap-3 px-4 py-2 text-sm text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 rounded-lg transition-colors font-semibold"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.25} stroke="currentColor" className="w-4 h-4 text-zinc-600">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
             </svg>
             Sair do Admin
