@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { obterMeusChamados } from '@/app/actions/chamados';
 import { obterContadoresNaoLidos } from '@/app/actions/chamadoChat';
@@ -24,6 +24,11 @@ export default function MeusChamadosPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [expandedChatId, setExpandedChatId] = useState<string | null>(null);
   const [contadoresNaoLidos, setContadoresNaoLidos] = useState<ContadoresNaoLidos>({});
+
+  const expandedChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    expandedChatIdRef.current = expandedChatId;
+  }, [expandedChatId]);
 
   const carregarDados = useCallback(async () => {
     try {
@@ -57,7 +62,7 @@ export default function MeusChamadosPage() {
           if (novaMsg.autor_tipo === 'ti') {
             setContadoresNaoLidos(prev => {
               // Se o chat deste chamado já estiver aberto, não incrementa o badge
-              if (expandedChatId === novaMsg.chamado_id) return prev;
+              if (expandedChatIdRef.current === novaMsg.chamado_id) return prev;
               return {
                 ...prev,
                 [novaMsg.chamado_id]: (prev[novaMsg.chamado_id] || 0) + 1,
@@ -71,7 +76,7 @@ export default function MeusChamadosPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [carregarDados, expandedChatId]);
+  }, [carregarDados]);
 
   const handleToggleChat = (chamadoId: string) => {
     if (expandedChatId === chamadoId) {
@@ -86,12 +91,12 @@ export default function MeusChamadosPage() {
     }
   };
 
-  const handleUnreadCleared = (chamadoId: string) => {
+  const handleUnreadCleared = useCallback((chamadoId: string) => {
     setContadoresNaoLidos(prev => ({
       ...prev,
       [chamadoId]: 0,
     }));
-  };
+  }, []);
 
   return (
     <div className="min-h-screen bg-canvas p-4 md:p-8">

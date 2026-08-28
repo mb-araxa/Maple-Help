@@ -42,6 +42,11 @@ export function ChamadoChat({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
+  const onUnreadClearedRef = useRef(onUnreadCleared);
+
+  useEffect(() => {
+    onUnreadClearedRef.current = onUnreadCleared;
+  }, [onUnreadCleared]);
 
   // Obtém o ID do usuário conectado caso não tenha sido passado por props
   useEffect(() => {
@@ -73,7 +78,7 @@ export function ChamadoChat({
     isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 80;
   };
 
-  // Carrega as mensagens iniciais
+  // Carrega as mensagens iniciais apenas quando chamadoId mudar
   const carregarMensagensIniciais = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -85,7 +90,7 @@ export function ChamadoChat({
 
       // Marca o chamado como lido
       await marcarChatComoLido(chamadoId);
-      onUnreadCleared?.();
+      onUnreadClearedRef.current?.();
 
       setTimeout(() => scrollToBottom(false), 50);
     } catch (err) {
@@ -98,7 +103,7 @@ export function ChamadoChat({
     } finally {
       setLoading(false);
     }
-  }, [chamadoId, onUnreadCleared, scrollToBottom]);
+  }, [chamadoId, scrollToBottom]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -167,7 +172,7 @@ export function ChamadoChat({
           // Se a mensagem for de outra pessoa, marca como lida e atualiza badges
           if (resolvedUserId && novaMsg.autor_id !== resolvedUserId) {
             marcarChatComoLido(chamadoId, novaMsg.created_at);
-            onUnreadCleared?.();
+            onUnreadClearedRef.current?.();
           }
 
           if (isAtBottomRef.current) {
@@ -184,7 +189,7 @@ export function ChamadoChat({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [chamadoId, onUnreadCleared, resolvedUserId, scrollToBottom]);
+  }, [chamadoId, resolvedUserId, scrollToBottom]);
 
   // Envio de mensagem com atualização otimista
   const handleEnviar = async (texto: string) => {
@@ -213,7 +218,7 @@ export function ChamadoChat({
       setMensagens(prev =>
         prev.map(m => (m.id === tempId ? { ...mensagemSalva, statusEnvio: 'sent' } : m))
       );
-      onUnreadCleared?.();
+      onUnreadClearedRef.current?.();
     } catch (err) {
       console.error('Erro ao enviar mensagem:', err);
       // Marca a mensagem otimista como com erro para permitir retry
