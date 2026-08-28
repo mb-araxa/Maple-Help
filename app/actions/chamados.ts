@@ -4,10 +4,11 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies, headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { extractFirstName, getAdminEmails } from '@/lib/utils';
+import { extractFirstName } from '@/lib/utils';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { Chamado } from '@/types/database';
+import { enviarEmailDeAtualizacao } from '@/lib/chamadoEmail';
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -130,34 +131,51 @@ const ratelimit = redis ? new Ratelimit({
 
 /**
  * Validação de usuário e permissão de administrador na Server Action.
- * Lança erro caso não seja administrador. Retorna os dados da sessão/usuário.
+ * Consulta public.app_admins como fonte única e segura no banco de dados.
  */
 async function requireAdmin() {
   const supabase = await getSupabase();
-  const { data: { session }, error } = await supabase.auth.getSession();
+  const { data: { user }, error } = await supabase.auth.getUser();
   
-  if (error || !session) {
+  if (error || !user) {
     throw new Error('Usuário não autenticado.');
   }
 
-  const email = session.user.email;
-  if (!email || !getAdminEmails().includes(email.toLowerCase())) {
+  const email = user.email?.toLowerCase();
+  if (!email) {
+    throw new Error('Acesso negado: e-mail não encontrado.');
+  }
+
+  const { data: adminData, error: adminError } = await supabase
+    .from('app_admins')
+    .select('email')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (adminError || !adminData) {
     throw new Error('Acesso negado: você não tem permissão de administrador.');
   }
 
-  return { session, email, nome: extractFirstName(email) };
+  return { user, email, nome: extractFirstName(email) };
 }
 
 /**
  * Verifica se o usuário logado é administrador.
- * Usado pelo frontend (Menu) para ocultar botões de forma segura sem expor a lista no client.
+ * Usado pelo frontend (Menu) para ocultar botões de forma segura consultando app_admins.
  */
 export async function checkIsAdmin(): Promise<boolean> {
   try {
     const supabase = await getSupabase();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.email) return false;
-    return getAdminEmails().includes(session.user.email.toLowerCase());
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.email) return false;
+
+    const { data } = await supabase
+      .from('app_admins')
+      .select('email')
+      .eq('email', user.email.toLowerCase())
+      .maybeSingle();
+
+    return !!data;
   } catch {
     return false;
   }
@@ -208,9 +226,9 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
     const supabase = await getSupabase();
     
     let userId: string | undefined = undefined;
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (sessionData.session?.user) {
-      userId = sessionData.session.user.id;
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) {
+      userId = userData.user.id;
     }
 
     const payload = {
@@ -440,14 +458,18 @@ export async function finalizarChamado(id: string, resolucao: string, tempo_gast
         data_resolucao: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('status', 'Em Andamento')
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       throw error;
     }
+    if (!data) throw new Error('O chamado não está em andamento ou já foi finalizado.');
 
-    return data as Chamado;
+    const chamado = data as Chamado;
+    await enviarEmailDeAtualizacao(chamado, 'concluido');
+    return chamado;
   } catch (error) {
     console.error('Erro em finalizarChamado:', error);
     const message = error instanceof Error ? error.message : 'Erro ao finalizar';
@@ -471,14 +493,18 @@ export async function assumirChamado(id: string) {
         responsavel 
       })
       .eq('id', id)
+      .eq('status', 'Pendente')
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       throw error;
     }
+    if (!data) throw new Error('O chamado já foi aceito ou não está mais pendente.');
 
-    return data as Chamado;
+    const chamado = data as Chamado;
+    await enviarEmailDeAtualizacao(chamado, 'assumido');
+    return chamado;
   } catch (error) {
     console.error('Erro em assumirChamado:', error);
     const message = error instanceof Error ? error.message : 'Erro ao assumir';
@@ -519,12 +545,12 @@ export async function obterMeusChamados() {
   try {
     const supabase = await getSupabase();
     
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !sessionData.session) {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
       throw new Error('Usuário não autenticado.');
     }
     
-    const userId = sessionData.session.user.id;
+    const userId = userData.user.id;
 
     const { data, error } = await supabase
       .from('chamados')

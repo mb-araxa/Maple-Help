@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { isAdminEmail } from './lib/utils';
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -36,12 +36,22 @@ export async function proxy(request: NextRequest) {
 
   // Proteção da Rota do Painel ADM
   if (isAdmRoute) {
-    // Se o usuário não está logado ou o e-mail não é o de um administrador...
-    if (!user || !user.email || !isAdminEmail(user.email)) {
-      // Cria uma nova URL de redirecionamento seguro
+    if (!user || !user.email) {
       const url = request.nextUrl.clone();
-      // Se ele não estiver logado de forma alguma, manda pro Login. Se estiver logado (mas como professor comum), manda pro Hub.
       url.pathname = user ? '/menu' : '/';
+      return NextResponse.redirect(url);
+    }
+
+    // Consulta a fonte única no banco (public.app_admins) protegida por RLS
+    const { data: adminRecord } = await supabase
+      .from('app_admins')
+      .select('email')
+      .eq('email', user.email.toLowerCase())
+      .maybeSingle();
+
+    if (!adminRecord) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/menu';
       return NextResponse.redirect(url);
     }
   }

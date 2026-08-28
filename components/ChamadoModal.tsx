@@ -1,3 +1,5 @@
+'use client';
+
 import { Chamado } from '@/types/database';
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
@@ -5,6 +7,8 @@ import { ConfirmModal } from './ConfirmModal';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { FormField } from '@/components/ui/FormField';
+import { ChamadoChat } from '@/components/chamado-chat/ChamadoChat';
+import { IndicadorNaoLidas } from '@/components/chamado-chat/IndicadorNaoLidas';
 
 interface ChamadoModalProps {
   chamado: Chamado;
@@ -12,9 +16,20 @@ interface ChamadoModalProps {
   onAssumir: (id: string) => Promise<void>;
   onConcluir: (id: string, resolucao: string, tempo_gasto: string) => Promise<void>;
   onDelete?: (id: string) => void;
+  unreadCount?: number;
+  onUnreadCleared?: () => void;
 }
 
-export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete }: ChamadoModalProps) {
+export function ChamadoModal({
+  chamado,
+  onClose,
+  onAssumir,
+  onConcluir,
+  onDelete,
+  unreadCount = 0,
+  onUnreadCleared,
+}: ChamadoModalProps) {
+  const [activeTab, setActiveTab] = useState<'detalhes' | 'conversa'>('detalhes');
   const [resolucao, setResolucao] = useState('');
   const [tempoGasto, setTempoGasto] = useState('');
   const [loading, setLoading] = useState(false);
@@ -84,14 +99,14 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
         <div
           ref={modalRef}
           tabIndex={-1}
-          className="bg-surface w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] outline-none"
+          className="bg-surface w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] outline-none"
           onClick={(e) => e.stopPropagation()}
         >
-          
+          {/* Header do Modal */}
           <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-surface-muted">
             <div className="flex items-center gap-3">
               <StatusBadge status={chamado.status} />
-              <h2 id="chamado-modal-title" className="text-lg font-bold text-text">Detalhes do Chamado</h2>
+              <h2 id="chamado-modal-title" className="text-lg font-bold text-text">Chamado #{chamado.id.slice(0, 8)}</h2>
               
               {chamado.responsavel && (
                 <span className="ml-2 flex items-center gap-1.5 px-3 py-1 bg-surface text-text-muted rounded-lg text-xs font-semibold border border-border">
@@ -128,113 +143,156 @@ export function ChamadoModal({ chamado, onClose, onAssumir, onConcluir, onDelete
             </div>
           </div>
 
-          <div className="p-6 overflow-y-auto flex-1">
-            <div className="grid grid-cols-2 gap-6 mb-6">
-              <div>
-                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Solicitante</p>
-                <p className="text-text font-medium">{chamado.solicitante}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Local</p>
-                <p className="text-text font-medium">{chamado.local}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Categoria</p>
-                <p className="text-text font-medium">{chamado.categoria}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Data de Abertura</p>
-                <p className="text-text font-medium">
-                  {new Date(chamado.data_criacao).toLocaleString('pt-BR', {
-                    day: '2-digit', month: '2-digit', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
-                  })}
-                </p>
-              </div>
-            </div>
+          {/* Abas de Navegação */}
+          <div className="px-6 border-b border-border bg-surface flex gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('detalhes')}
+              className={`py-3 px-4 text-sm font-semibold border-b-2 transition-colors cursor-pointer ${
+                activeTab === 'detalhes'
+                  ? 'border-brand-500 text-brand-600'
+                  : 'border-transparent text-text-muted hover:text-text'
+              }`}
+            >
+              Detalhes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('conversa');
+                onUnreadCleared?.();
+              }}
+              className={`py-3 px-4 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
+                activeTab === 'conversa'
+                  ? 'border-brand-500 text-brand-600'
+                  : 'border-transparent text-text-muted hover:text-text'
+              }`}
+            >
+              <span>Conversa</span>
+              <IndicadorNaoLidas count={unreadCount} size="sm" />
+            </button>
+          </div>
 
-            <div className="bg-surface-muted p-4 rounded-2xl border border-border">
-              <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-2">Descrição do Problema</p>
-              <p className="text-text whitespace-pre-wrap leading-relaxed">{chamado.descricao}</p>
-              
-              {chamado.anexo_url && (
-                <div className="mt-4 pt-4 border-t border-border">
-                  <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-2">Anexo</p>
-                  <a href={chamado.anexo_url} target="_blank" rel="noopener noreferrer" className="block max-w-sm rounded-lg overflow-hidden border border-border shadow-sm hover:shadow-md transition-shadow relative h-64 w-full">
-                    <Image 
-                      src={chamado.anexo_url} 
-                      alt="Anexo do Chamado" 
-                      fill
-                      className="object-cover"
-                      unoptimized={true}
+          {/* Conteúdo da Aba Ativa */}
+          {activeTab === 'conversa' ? (
+            <div className="p-6 overflow-y-auto flex-1 flex flex-col">
+              <ChamadoChat
+                chamadoId={chamado.id}
+                status={chamado.status}
+                isAdm={true}
+                onUnreadCleared={onUnreadCleared}
+              />
+            </div>
+          ) : (
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="grid grid-cols-2 gap-6 mb-6">
+                <div>
+                  <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Solicitante</p>
+                  <p className="text-text font-medium">{chamado.solicitante}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Local</p>
+                  <p className="text-text font-medium">{chamado.local}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Categoria</p>
+                  <p className="text-text font-medium">{chamado.categoria}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Data de Abertura</p>
+                  <p className="text-text font-medium">
+                    {new Date(chamado.data_criacao).toLocaleString('pt-BR', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-surface-muted p-4 rounded-2xl border border-border">
+                <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-2">Descrição do Problema</p>
+                <p className="text-text whitespace-pre-wrap leading-relaxed">{chamado.descricao}</p>
+                
+                {chamado.anexo_url && (
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-2">Anexo</p>
+                    <a href={chamado.anexo_url} target="_blank" rel="noopener noreferrer" className="block max-w-sm rounded-lg overflow-hidden border border-border shadow-sm hover:shadow-md transition-shadow relative h-64 w-full">
+                      <Image 
+                        src={chamado.anexo_url} 
+                        alt="Anexo do Chamado" 
+                        fill
+                        className="object-cover"
+                        unoptimized={true}
+                      />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {chamado.status === 'Em Andamento' && (
+                <div className="mt-6 animate-in fade-in slide-in-from-bottom-2 space-y-4">
+                  <FormField
+                    label="Tempo Gasto"
+                    htmlFor="tempo-input"
+                    required
+                    error={tempoError ? 'Preenchimento obrigatório' : undefined}
+                  >
+                    <input
+                      id="tempo-input"
+                      type="text"
+                      value={tempoGasto}
+                      onChange={(e) => setTempoGasto(e.target.value)}
+                      placeholder="Ex: 30m, 1h 20m..."
+                      className={`w-full p-3 bg-surface border rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all ${
+                        tempoError ? 'border-status-danger ring-2 ring-status-danger/50' : 'border-border'
+                      }`}
                     />
-                  </a>
+                  </FormField>
+                  
+                  <FormField
+                    label="Notas de Resolução"
+                    htmlFor="resolucao-textarea"
+                    required
+                    error={resolucaoError ? 'Preenchimento obrigatório' : undefined}
+                  >
+                    <textarea
+                      id="resolucao-textarea"
+                      value={resolucao}
+                      onChange={(e) => setResolucao(e.target.value)}
+                      placeholder="Descreva o que foi feito para resolver o problema..."
+                      className={`w-full p-4 bg-surface border rounded-2xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all resize-none min-h-[120px] ${
+                        resolucaoError ? 'border-status-danger ring-2 ring-status-danger/50' : 'border-border'
+                      }`}
+                    />
+                  </FormField>
+                </div>
+              )}
+
+              {chamado.status === 'Concluído' && chamado.resolucao && (
+                <div className="mt-6 bg-status-completed-bg p-4 rounded-2xl border border-emerald-200/50">
+                  <p className="text-xs text-status-completed-text font-semibold uppercase tracking-wider mb-2">Solução Aplicada</p>
+                  <p className="text-status-completed-text whitespace-pre-wrap">{chamado.resolucao}</p>
+                  <div className="flex items-center gap-4 mt-3 border-t border-emerald-200/30 pt-2 text-xs text-status-completed-text font-medium">
+                    {chamado.data_resolucao && (
+                      <p>
+                        Resolvido em: {new Date(chamado.data_resolucao).toLocaleString('pt-BR', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit'
+                        })}
+                      </p>
+                    )}
+                    {chamado.tempo_gasto && (
+                      <p>
+                        • Tempo gasto: {chamado.tempo_gasto}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
+          )}
 
-            {chamado.status === 'Em Andamento' && (
-              <div className="mt-6 animate-in fade-in slide-in-from-bottom-2 space-y-4">
-                <FormField
-                  label="Tempo Gasto"
-                  htmlFor="tempo-input"
-                  required
-                  error={tempoError ? 'Preenchimento obrigatório' : undefined}
-                >
-                  <input
-                    id="tempo-input"
-                    type="text"
-                    value={tempoGasto}
-                    onChange={(e) => setTempoGasto(e.target.value)}
-                    placeholder="Ex: 30m, 1h 20m..."
-                    className={`w-full p-3 bg-surface border rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all ${
-                      tempoError ? 'border-status-danger ring-2 ring-status-danger/50' : 'border-border'
-                    }`}
-                  />
-                </FormField>
-                
-                <FormField
-                  label="Notas de Resolução"
-                  htmlFor="resolucao-textarea"
-                  required
-                  error={resolucaoError ? 'Preenchimento obrigatório' : undefined}
-                >
-                  <textarea
-                    id="resolucao-textarea"
-                    value={resolucao}
-                    onChange={(e) => setResolucao(e.target.value)}
-                    placeholder="Descreva o que foi feito para resolver o problema..."
-                    className={`w-full p-4 bg-surface border rounded-2xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all resize-none min-h-[120px] ${
-                      resolucaoError ? 'border-status-danger ring-2 ring-status-danger/50' : 'border-border'
-                    }`}
-                  />
-                </FormField>
-              </div>
-            )}
-
-            {chamado.status === 'Concluído' && chamado.resolucao && (
-              <div className="mt-6 bg-status-completed-bg p-4 rounded-2xl border border-emerald-200/50">
-                <p className="text-xs text-status-completed-text font-semibold uppercase tracking-wider mb-2">Solução Aplicada</p>
-                <p className="text-status-completed-text whitespace-pre-wrap">{chamado.resolucao}</p>
-                <div className="flex items-center gap-4 mt-3 border-t border-emerald-200/30 pt-2 text-xs text-status-completed-text font-medium">
-                  {chamado.data_resolucao && (
-                    <p>
-                      Resolvido em: {new Date(chamado.data_resolucao).toLocaleString('pt-BR', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
-                      })}
-                    </p>
-                  )}
-                  {chamado.tempo_gasto && (
-                    <p>
-                      • Tempo gasto: {chamado.tempo_gasto}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
+          {/* Rodapé de Ações */}
           {(chamado.status === 'Pendente' || chamado.status === 'Em Andamento') && (
             <div className="px-6 py-4 border-t border-border bg-surface-muted flex justify-end gap-3">
               <Button

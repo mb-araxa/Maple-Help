@@ -14,22 +14,20 @@ vi.mock('next/headers', () => ({
 }));
 
 // Mock do utils
-const mockAdminEmails = ['admin@teste.com'];
 vi.mock('@/lib/utils', () => ({
   extractFirstName: vi.fn((email: string) => email.split('@')[0]),
-  getAdminEmails: vi.fn(() => mockAdminEmails),
-  isAdminEmail: vi.fn((email: string) => mockAdminEmails.includes(email)),
 }));
 
 // Mock do supabase SSR
 const mockSupabase = {
   auth: {
-    getSession: vi.fn(),
+    getUser: vi.fn(),
   },
   from: vi.fn(),
   storage: {
     from: vi.fn(() => ({
       createSignedUrl: vi.fn(() => ({ data: { signedUrl: 'mocked-signed-url' } })),
+      getPublicUrl: vi.fn(() => ({ data: { publicUrl: 'mocked-public-url' } })),
     })),
   }
 };
@@ -59,26 +57,60 @@ describe('Ações de Chamados (Server Actions)', () => {
 
   describe('Autorização (requireAdmin)', () => {
     it('deve rejeitar se o usuário não estiver autenticado', async () => {
-      mockSupabase.auth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: new Error('Não autenticado') });
       
       await expect(chamados.obterChamadosAbertos()).rejects.toThrow('Usuário não autenticado.');
     });
 
     it('deve rejeitar se o usuário não for administrador', async () => {
-      mockSupabase.auth.getSession.mockResolvedValueOnce({ 
-        data: { session: { user: { email: 'comum@teste.com' } } } 
+      mockSupabase.auth.getUser.mockResolvedValueOnce({ 
+        data: { user: { id: 'u1', email: 'comum@teste.com' } },
+        error: null,
+      });
+
+      mockSupabase.from.mockImplementationOnce((table: string) => {
+        if (table === 'app_admins') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null })
+              })
+            })
+          };
+        }
+        return {};
       });
       
       await expect(chamados.obterChamadosAbertos()).rejects.toThrow('Acesso negado: você não tem permissão de administrador.');
     });
 
     it('deve permitir se o usuário for administrador', async () => {
-      mockSupabase.auth.getSession.mockResolvedValueOnce({ 
-        data: { session: { user: { email: 'admin@teste.com' } } } 
+      mockSupabase.auth.getUser.mockResolvedValueOnce({ 
+        data: { user: { id: 'a1', email: 'admin@teste.com' } },
+        error: null,
       });
 
-      const mockSelect = vi.fn().mockReturnValue({ neq: vi.fn().mockReturnValue({ order: vi.fn().mockResolvedValue({ data: [] }) }) });
-      mockSupabase.from.mockReturnValueOnce({ select: mockSelect });
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'app_admins') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: { email: 'admin@teste.com' }, error: null })
+              })
+            })
+          };
+        }
+        if (table === 'chamados') {
+          return {
+            select: vi.fn().mockReturnValue({
+              neq: vi.fn().mockReturnValue({
+                order: vi.fn().mockResolvedValue({ data: [] })
+              })
+            })
+          };
+        }
+        return {};
+      });
       
       const result = await chamados.obterChamadosAbertos();
       expect(result).toEqual([]);
@@ -101,8 +133,22 @@ describe('Ações de Chamados (Server Actions)', () => {
 
   describe('Ações de Escrita (Validação UUID)', () => {
     it('deletarChamado deve rejeitar ID inválido (não uuid)', async () => {
-      mockSupabase.auth.getSession.mockResolvedValueOnce({ 
-        data: { session: { user: { email: 'admin@teste.com' } } } 
+      mockSupabase.auth.getUser.mockResolvedValueOnce({ 
+        data: { user: { id: 'a1', email: 'admin@teste.com' } },
+        error: null,
+      });
+
+      mockSupabase.from.mockImplementationOnce((table: string) => {
+        if (table === 'app_admins') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: { email: 'admin@teste.com' }, error: null })
+              })
+            })
+          };
+        }
+        return {};
       });
       
       await expect(chamados.deletarChamado('123')).rejects.toThrow();

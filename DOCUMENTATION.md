@@ -2,47 +2,60 @@
 
 ## 1. Objetivo
 
-O Maple Help centraliza solicitações internas de suporte de TI da Maple Bear Araxá. Colaboradores abrem e acompanham chamados; administradores organizam a fila, registram o atendimento e geram relatórios mensais.
+O Maple Help centraliza solicitações internas de suporte de TI da Maple Bear Araxá. Colaboradores abrem e acompanham chamados e conversam diretamente com a equipe de TI por meio de um chat interno; administradores organizam a fila, atendem as solicitações via chat em tempo real, registram resoluções e geram relatórios mensais.
 
 ## 2. Escopo da versão atual
 
 ### Disponível
 
-- Autenticação com e-mail institucional.
+- Autenticação com e-mail institucional do domínio `@maplebeararaxa.com.br`.
 - Cadastro, login e recuperação de senha.
-- Abertura de chamados de TI.
-- Upload opcional de imagens JPEG, PNG ou WEBP de até 5 MB.
-- Consulta dos chamados do usuário autenticado.
+- Abertura de chamados de TI com upload opcional de imagens (JPEG, PNG, WEBP até 5 MB).
+- Consulta e acompanhamento dos chamados do usuário autenticado em "Meus Chamados".
+- **Chat interno por chamado**:
+  - Conversa em tempo real individual para cada chamado entre solicitante e equipe de TI.
+  - Disponível dentro do card expandido em "Meus Chamados" e na aba "Conversa" no modal do administrador.
+  - Notificações visuais e badges de mensagens não lidas in-app (sem e-mails ou WhatsApp).
+  - Bloqueio mútuo de novas mensagens após a conclusão do atendimento, mantendo o histórico integral para consulta.
+  - Paginação segura por cursor composto `(created_at, id)` e ordenação cronológica.
 - Fluxo de status `Pendente` → `Em Andamento` → `Concluído`.
 - Registro de responsável, solução e tempo gasto.
 - Avaliação única do chamado concluído, com nota de 1 a 5 e comentário opcional.
-- Painel administrativo com atualização em tempo real.
-- Relatórios mensais, gráficos e exportação completa em Excel.
+- Painel administrativo com Kanban e atualização em tempo real via Supabase Realtime.
+- Relatórios mensais, gráficos e exportação completa em Excel (`.xlsx`).
 
 ### Fora do escopo atual
 
-- Chamados de Manutenção Estrutural. O card existe apenas como indicação de funcionalidade futura.
-- Notificações automáticas sobre mudanças no chamado.
+- Chamados de Manutenção Estrutural (indicador visual futuro no menu).
+- Notificações externas por e-mail ou WhatsApp para o chat (o chat opera estritamente com badges e notificações in-app).
+- Áudios, reações ou anexos adicionais dentro da conversa do chat.
 - Aplicativo móvel nativo.
 
 ## 3. Perfis e permissões
 
+### Fonte Única de Administradores (`public.app_admins`)
+
+A autorização administrativa é centralizada no banco de dados na tabela `public.app_admins`. A função `public.is_admin()` (`STABLE`, `SECURITY INVOKER`, `SET search_path = public, pg_temp`) compara o e-mail autenticado e assinado do JWT contra a tabela.
+
 ### Colaborador
 
 - Usa uma conta do domínio `@maplebeararaxa.com.br`.
-- Abre chamados e acompanha os chamados associados ao seu usuário.
-- Consulta a solução de chamados concluídos.
+- Abre chamados para si mesmo (`user_id = auth.uid()`).
+- Consulta apenas os próprios chamados e mensagens associadas.
+- Envia mensagens no chat de seus chamados abertos (`Pendente` ou `Em Andamento`).
+- Consulta a solução e histórico de mensagens de chamados concluídos.
 - Envia uma única avaliação por chamado concluído.
 
 ### Administrador
 
-- É identificado pela lista `ADMIN_EMAILS` do ambiente.
+- Cadastro verificado na tabela `public.app_admins`.
 - Acessa `/adm` e `/adm/relatorios`.
-- Visualiza a fila administrativa.
+- Visualiza a fila administrativa completa de chamados e todas as conversas de chat.
 - Assume, conclui e exclui chamados.
+- Envia mensagens em qualquer chamado aberto como "Equipe de TI".
 - Consulta indicadores e exporta relatórios.
 
-A interface oculta o acesso administrativo de usuários comuns, o `proxy.ts` protege as rotas `/adm` e as Server Actions administrativas repetem a validação de permissão no servidor.
+O `proxy.ts` protege as rotas `/adm`, as Server Actions validam a sessão com `supabase.auth.getUser()`, e o banco de dados impõe políticas estritas de Row Level Security (RLS).
 
 ## 4. Fluxos principais
 
@@ -53,44 +66,35 @@ A interface oculta o acesso administrativo de usuários comuns, o `proxy.ts` pro
 3. O Supabase Auth realiza cadastro, login ou recuperação de senha.
 4. Após o login, o usuário é direcionado para `/menu`.
 
-O banco também possui validações de domínio descritas no esquema SQL. A confirmação de e-mail depende da configuração do projeto Supabase usado pelo ambiente.
-
 ### Abertura de chamado
 
 1. O usuário acessa `/chamado` pelo menu.
 2. Informa solicitante, local, categoria e descrição.
-3. Se houver imagem, o navegador valida formato e tamanho e envia o arquivo ao bucket `chamados-anexos`.
-4. A Server Action valida os campos com Zod e cria o registro com status `Pendente`.
-5. O limite padrão é de 5 aberturas a cada 10 minutos por IP.
+3. Se houver imagem, o arquivo é enviado ao bucket `chamados-anexos`.
+4. A Server Action `abrirChamado` valida os campos com Zod e grava o registro com `user_id = auth.uid()` e status `Pendente`.
+5. Rate limit: 5 chamados a cada 10 minutos por IP.
 
-Categorias atuais de TI:
+### Chat interno por chamado
 
-- Wi-fi | Cabeamento
-- Computador | Notebook
-- Televisão | Som
-- Ajuda | Duvidas
-- Outros
+1. **Acesso do Usuário**: Na página `/chamado/meus-chamados`, cada card possui o botão "Conversa com a equipe de TI" com badge de mensagens não lidas.
+2. **Acesso da TI**: No `/adm`, os cards exibem badges de mensagens não lidas e o modal de detalhes possui a aba "Conversa".
+3. **Envio de Mensagem**:
+   - Validação Zod (1 a 2.000 caracteres pós-trim).
+   - O autor é obtido da sessão segura via `auth.getUser()`.
+   - Um trigger `BEFORE INSERT` no banco define/sobrescreve com segurança `autor_id`, `autor_tipo` e `autor_nome`.
+   - O autor tem sua leitura (`last_read_at`) atualizada automaticamente.
+4. **Atualização em Tempo Real**:
+   - Eventos `INSERT` na tabela `chamado_mensagens` são entregues pelo canal Realtime.
+   - Mensagens otimistas são reconciliadas pelo ID.
+   - Cards fechados recebem incremento no badge de não lidas.
+5. **Conclusão do Atendimento**:
+   - Ao concluir o chamado, o compositor é bloqueado para ambos (solicitante e TI), exibindo aviso explicativo. O histórico completo é preservado.
 
-### Atendimento administrativo
+### Atendimento administrativo e relatórios
 
-1. Chamados novos entram em `Pendente`.
-2. Ao assumir um chamado, o sistema altera o status para `Em Andamento` e registra o primeiro nome do administrador.
-3. Ao finalizar, o administrador informa a solução e o tempo gasto.
-4. O sistema altera o status para `Concluído` e grava a data de resolução.
-5. O solicitante passa a poder avaliar o atendimento.
-
-### Relatórios
-
-O painel `/adm/relatorios` filtra os dados por mês e ano e apresenta:
-
-- total de chamados concluídos no período;
-- tempo médio entre criação e conclusão;
-- categoria mais recorrente;
-- distribuição por status dos chamados criados no mês;
-- distribuição por categoria;
-- tabela de concluídos com 50 registros por página.
-
-A exportação consulta todos os chamados concluídos do período no momento do clique, em lotes de até 1.000 registros, e gera `Relatorio-Maple-Help-MM-AAAA.xlsx`. O arquivo contém uma aba de resumo e uma aba com os chamados completos; não depende da página visível na tabela.
+1. Chamados em `Pendente` podem ser assumidos por um administrador, passando para `Em Andamento`.
+2. Ao finalizar, o administrador informa a solução e o tempo gasto, alterando para `Concluído`.
+3. O painel `/adm/relatorios` permite filtrar por mês/ano e exportar planilhas Excel formatadas com gráficos.
 
 ## 5. Rotas
 
@@ -99,85 +103,77 @@ A exportação consulta todos os chamados concluídos do período no momento do 
 | `/` | Todos | Login, cadastro e recuperação de senha |
 | `/menu` | Usuário autenticado | Hub de navegação |
 | `/chamado` | Usuário autenticado | Abertura de chamado de TI |
-| `/chamado/meus-chamados` | Usuário autenticado | Acompanhamento e avaliação |
-| `/adm` | Administrador | Gestão da fila de chamados |
+| `/chamado/meus-chamados` | Usuário autenticado | Acompanhamento, chat e avaliação |
+| `/adm` | Administrador | Gestão da fila de chamados e chat |
 | `/adm/relatorios` | Administrador | Indicadores e exportação mensal |
 
 ## 6. Arquitetura
 
 ### Interface
 
-As páginas usam o App Router do Next.js. Componentes reutilizáveis ficam em `components/`, e os elementos básicos da interface ficam em `components/ui/`.
+- App Router do Next.js 16 com React 19.
+- Componentes modulares em `components/` e `components/chamado-chat/`.
+- Design tokens em `app/globals.css`.
 
-### Regras do servidor
+### Regras do servidor (Server Actions)
 
-As operações de chamados estão concentradas em `app/actions/chamados.ts`. Esse arquivo reúne validação Zod, autenticação, autorização administrativa, rate limit e acesso ao Supabase.
+- `app/actions/chamados.ts`: Operações principais de chamados, relatórios e permissões.
+- `app/actions/chamadoChat.ts`: Operações de chat (`obterMensagensDoChamado`, `enviarMensagemDoChamado`, `marcarChatComoLido`, `obterContadoresNaoLidos`).
 
 ### Dados e serviços
 
-- `lib/supabase.ts`: cliente Supabase usado no navegador.
-- `proxy.ts`: renovação de sessão e proteção das rotas administrativas.
-- Supabase Auth: usuários e sessões.
-- PostgreSQL: chamados e avaliações.
-- Supabase Storage: anexos.
-- Supabase Realtime: atualização do painel administrativo.
-- Upstash Redis: rate limit distribuído quando configurado.
+- `lib/supabase.ts`: Cliente Supabase para o navegador (Realtime e Auth).
+- `proxy.ts`: Middleware de proteção com consulta a `app_admins`.
+- Supabase Auth: Usuários e sessões.
+- PostgreSQL: Tabelas `chamados`, `chamado_mensagens`, `chamado_chat_leituras`, `chamado_avaliacoes`, `app_admins`.
+- Supabase Storage: Bucket `chamados-anexos`.
+- Supabase Realtime: Publicações para `chamados` e `chamado_mensagens`.
+- Upstash Redis: Rate limiting distribuído com fallback em memória para desenvolvimento.
 
 ## 7. Modelo de dados
 
-### `public.chamados`
-
-| Campo | Uso |
-| --- | --- |
-| `id` | Identificador UUID |
-| `solicitante` | Nome informado no formulário |
-| `local` | Local do atendimento |
-| `categoria` | Categoria do problema |
-| `descricao` | Detalhes da solicitação |
-| `status` | Estado atual do chamado |
-| `resolucao` | Solução registrada pelo administrador |
-| `data_criacao` | Data de abertura |
-| `data_resolucao` | Data de conclusão |
-| `responsavel` | Administrador que assumiu o chamado |
-| `tempo_gasto` | Tempo informado na conclusão |
-| `anexo_url` | Caminho do arquivo no Storage |
-| `user_id` | Usuário do Supabase Auth associado ao chamado |
-
-### `public.chamado_avaliacoes`
-
-| Campo | Uso |
-| --- | --- |
-| `id` | Identificador UUID |
-| `chamado_id` | Chamado avaliado; valor único na tabela |
-| `user_id` | Autor da avaliação |
-| `nota` | Inteiro de 1 a 5 |
-| `comentario` | Texto opcional de até 500 caracteres |
-| `created_at` | Data de envio |
-
-O arquivo `supabase/maple_help_schema.sql` reproduz a estrutura atualmente utilizada, incluindo tabelas, políticas, bucket, validações de domínio e publicação Realtime. A migração incremental de avaliações está em `supabase/migrations/20260811_chamado_avaliacoes.sql`.
-
-## 8. Variáveis de ambiente
-
-| Variável | Obrigatória | Finalidade |
+### `public.app_admins`
+| Campo | Tipo | Uso |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Sim | URL do projeto Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Sim | Chave pública do Supabase |
-| `ADMIN_EMAILS` | Sim | Lista de administradores separada por vírgulas |
-| `UPSTASH_REDIS_REST_URL` | Recomendada em produção | Endpoint REST do Redis |
-| `UPSTASH_REDIS_REST_TOKEN` | Recomendada em produção | Token REST do Redis |
+| `email` | text (PK) | E-mail do administrador normalizado em minúsculas |
+| `created_at` | timestamptz | Data de inclusão |
 
-Sem as variáveis do Upstash, o projeto usa um contador em memória. Esse fallback serve para desenvolvimento e não é compartilhado entre instâncias de produção.
+### `public.chamados`
+| Campo | Tipo | Uso |
+| --- | --- | --- |
+| `id` | uuid (PK) | Identificador do chamado |
+| `solicitante` | text | Nome do solicitante |
+| `local` | text | Local do atendimento |
+| `categoria` | text | Categoria do problema |
+| `descricao` | text | Descrição detalhada |
+| `status` | text | `Pendente`, `Em Andamento` ou `Concluído` |
+| `resolucao` | text | Solução registrada pela TI |
+| `data_criacao` | timestamptz | Data de abertura |
+| `data_resolucao` | timestamptz | Data de conclusão |
+| `responsavel` | text | Nome do atendente |
+| `tempo_gasto` | text | Tempo informado |
+| `anexo_url` | text | Caminho da imagem |
+| `user_id` | uuid (FK) | Usuário do Supabase Auth (`ON DELETE SET NULL`) |
 
-## 9. Segurança e dados
+### `public.chamado_mensagens`
+| Campo | Tipo | Uso |
+| --- | --- | --- |
+| `id` | uuid (PK) | Identificador da mensagem |
+| `chamado_id` | uuid (FK) | Referência a `chamados.id` (`ON DELETE CASCADE`) |
+| `autor_id` | uuid (FK) | Referência a `auth.users(id)` (`ON DELETE SET NULL`) |
+| `autor_nome` | text | Nome do autor preservado historicamente |
+| `autor_tipo` | text | `usuario` ou `ti` |
+| `mensagem` | text | Conteúdo de 1 a 2.000 caracteres |
+| `created_at` | timestamptz | Data e horário da mensagem |
 
-- Não registrar chaves, tokens ou senhas no repositório.
-- Manter `ADMIN_EMAILS` igual nos ambientes que executam o sistema.
-- Preservar a restrição ao domínio institucional no frontend e no Supabase Auth.
-- Manter a validação administrativa no servidor; ocultar um botão não substitui autorização.
-- Anexos são armazenados pelo caminho do usuário e lidos por URL assinada quando o valor salvo não é uma URL completa.
-- O esquema SQL de migração preserva as políticas atuais do banco. As políticas de RLS devem ser revisadas como etapa de segurança da migração corporativa, sem alterar silenciosamente o comportamento durante a cópia.
+### `public.chamado_chat_leituras`
+| Campo | Tipo | Uso |
+| --- | --- | --- |
+| `chamado_id` | uuid (PK, FK) | Referência a `chamados.id` (`ON DELETE CASCADE`) |
+| `user_id` | uuid (PK, FK) | Referência a `auth.users.id` (`ON DELETE CASCADE`) |
+| `last_read_at` | timestamptz | Horário da última leitura registrado pelo banco |
 
-## 10. Testes e validação
+## 8. Testes e validação
 
 Antes de publicar uma alteração:
 
@@ -188,32 +184,9 @@ npm run test
 npm run build
 ```
 
-Os testes unitários atuais cobrem autorização administrativa, validação de abertura de chamado e rejeição de UUID inválido. Eles não substituem a validação manual dos fluxos no navegador.
-
-Checklist funcional mínimo:
-
-1. Entrar com conta institucional comum.
-2. Abrir chamado com e sem anexo.
-3. Confirmar o chamado em Meus Chamados.
-4. Entrar com administrador e assumir o chamado.
-5. Concluir com solução e tempo gasto.
-6. Enviar a avaliação pelo usuário solicitante.
-7. Conferir gráficos, tabela e arquivo Excel do período.
-8. Confirmar que um usuário comum não acessa `/adm`.
-
-## 11. Implantação e migração corporativa
-
-O código está preparado para Vercel e Supabase, mas a transferência para a infraestrutura corporativa ainda não deve ser considerada concluída.
-
-Ordem recomendada para a migração:
-
-1. Criar ou selecionar o projeto Supabase corporativo.
-2. Aplicar `supabase/maple_help_schema.sql` sem modificar o arquivo durante a execução da cópia.
-3. Migrar usuários e dados conforme a estratégia aprovada.
-4. Configurar Auth, URLs de redirecionamento, Storage e Realtime.
-5. Configurar todas as variáveis de ambiente no projeto Vercel corporativo.
-6. Publicar uma implantação de validação.
-7. Executar o checklist funcional completo.
-8. Trocar o ambiente de produção somente após a aprovação.
-
-Registrar a conclusão de cada etapa em `CONTEXTO_AGENTE.md`. Não remover a integração antiga antes de confirmar que a nova atende os fluxos essenciais e que existe caminho de retorno.
+Os testes automatizados em `__tests__/` cobrem:
+- Validações Zod (mensagens vazias, limite de caracteres, UUIDs).
+- Autorização administrativa e isolamento de usuários comuns.
+- Bloqueio de envio em chamados concluídos para solicitante e TI.
+- Renderização de componentes, estados de loading, erro e vazio.
+- Acessibilidade e teclado (Enter vs Shift+Enter).

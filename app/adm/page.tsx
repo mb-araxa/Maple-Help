@@ -6,8 +6,15 @@ import { supabase } from '@/lib/supabase';
 import { extractFirstName } from '@/lib/utils';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { useToast } from '@/components/ToastProvider';
-import { obterChamadosAbertos, obterChamadosConcluidosHoje, assumirChamado, finalizarChamado, deletarChamado } from '@/app/actions/chamados';
-import { Chamado } from '@/types/database';
+import {
+  obterChamadosAbertos,
+  obterChamadosConcluidosHoje,
+  assumirChamado,
+  finalizarChamado,
+  deletarChamado,
+} from '@/app/actions/chamados';
+import { obterContadoresNaoLidos } from '@/app/actions/chamadoChat';
+import { Chamado, ContadoresNaoLidos } from '@/types/database';
 import { ChamadoCard } from '@/components/ChamadoCard';
 import { ChamadoModal } from '@/components/ChamadoModal';
 import { Button } from '@/components/ui/Button';
@@ -23,17 +30,19 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [chamadoSelecionado, setChamadoSelecionado] = useState<Chamado | null>(null);
   const [adminName, setAdminName] = useState<string>('TI');
-
   const [concluidosHoje, setConcluidosHoje] = useState<Chamado[]>([]);
+  const [contadoresNaoLidos, setContadoresNaoLidos] = useState<ContadoresNaoLidos>({});
 
   const fetchChamados = useCallback(async () => {
     try {
-      const [abertos, concluidos] = await Promise.all([
+      const [abertos, concluidos, contadores] = await Promise.all([
         obterChamadosAbertos(),
-        obterChamadosConcluidosHoje()
+        obterChamadosConcluidosHoje(),
+        obterContadoresNaoLidos(),
       ]);
       setChamados(abertos);
       setConcluidosHoje(concluidos);
+      setContadoresNaoLidos(contadores);
     } catch (error) {
       console.error('Erro ao buscar chamados:', error);
     } finally {
@@ -55,7 +64,7 @@ export default function Dashboard() {
         
         gainNode.gain.setValueAtTime(0, startTime);
         gainNode.gain.linearRampToValueAtTime(0.2, startTime + 0.01);
-        gainNode.gain.linearRampToValueAtTime(0, startTime + 0.15);
+        gainNode.gain.linearRampToValueAtTime(0.15, startTime + 0.15);
         
         oscillator.connect(gainNode);
         gainNode.connect(globalAudioCtx!.destination);
@@ -96,9 +105,9 @@ export default function Dashboard() {
 
     // Buscar usuário logado
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.email) {
-        setAdminName(extractFirstName(session.user.email));
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        setAdminName(extractFirstName(user.email));
       }
     };
     getSession();
@@ -107,7 +116,7 @@ export default function Dashboard() {
     fetchChamados();
 
     const channel = supabase
-      .channel('custom-all-channel')
+      .channel('adm-dashboard-channel')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'chamados' },
@@ -115,6 +124,20 @@ export default function Dashboard() {
           fetchChamados();
           if (payload.eventType === 'INSERT') {
             playNotificationSound();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chamado_mensagens' },
+        (payload) => {
+          const novaMsg = payload.new as { chamado_id: string; autor_tipo: string };
+          if (novaMsg.autor_tipo === 'usuario') {
+            playNotificationSound();
+            setContadoresNaoLidos(prev => ({
+              ...prev,
+              [novaMsg.chamado_id]: (prev[novaMsg.chamado_id] || 0) + 1,
+            }));
           }
         }
       )
@@ -239,7 +262,12 @@ export default function Dashboard() {
               <p className="text-text-muted text-sm italic p-4 text-center">Nenhum chamado pendente.</p>
             ) : (
               pendentes.map(chamado => (
-                <ChamadoCard key={chamado.id} chamado={chamado} onClick={() => setChamadoSelecionado(chamado)} />
+                <ChamadoCard
+                  key={chamado.id}
+                  chamado={chamado}
+                  onClick={() => setChamadoSelecionado(chamado)}
+                  unreadCount={contadoresNaoLidos[chamado.id] || 0}
+                />
               ))
             )}
           </div>
@@ -256,7 +284,12 @@ export default function Dashboard() {
               <p className="text-text-muted text-sm italic p-4 text-center">Nenhum chamado em andamento.</p>
             ) : (
               emAndamento.map(chamado => (
-                <ChamadoCard key={chamado.id} chamado={chamado} onClick={() => setChamadoSelecionado(chamado)} />
+                <ChamadoCard
+                  key={chamado.id}
+                  chamado={chamado}
+                  onClick={() => setChamadoSelecionado(chamado)}
+                  unreadCount={contadoresNaoLidos[chamado.id] || 0}
+                />
               ))
             )}
           </div>
@@ -273,7 +306,12 @@ export default function Dashboard() {
               <p className="text-text-muted text-sm italic p-4 text-center">Os chamados concluídos somem da fila principal e vão para os relatórios.</p>
             ) : (
               concluidos.map(chamado => (
-                <ChamadoCard key={chamado.id} chamado={chamado} onClick={() => setChamadoSelecionado(chamado)} />
+                <ChamadoCard
+                  key={chamado.id}
+                  chamado={chamado}
+                  onClick={() => setChamadoSelecionado(chamado)}
+                  unreadCount={contadoresNaoLidos[chamado.id] || 0}
+                />
               ))
             )}
           </div>
@@ -281,7 +319,7 @@ export default function Dashboard() {
 
       </div>
 
-      {/* Modal de Detalhes */}
+      {/* Modal de Detalhes com Chat */}
       {chamadoSelecionado && (
         <ChamadoModal 
           chamado={chamadoSelecionado}
@@ -289,6 +327,13 @@ export default function Dashboard() {
           onAssumir={handleAssumir}
           onConcluir={handleConcluir}
           onDelete={handleDelete}
+          unreadCount={contadoresNaoLidos[chamadoSelecionado.id] || 0}
+          onUnreadCleared={() => {
+            setContadoresNaoLidos(prev => ({
+              ...prev,
+              [chamadoSelecionado.id]: 0,
+            }));
+          }}
         />
       )}
     </div>

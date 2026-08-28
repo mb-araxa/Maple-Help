@@ -11,6 +11,13 @@ import { saveAs } from 'file-saver';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import { Button } from '@/components/ui/Button';
+import {
+  contarCategoriasParaGrafico,
+  contarChamadosPorDiaUtil,
+  converterSvgParaPngBase64,
+  criarGraficoBarrasDiasUteis,
+  criarGraficoPizzaCategorias,
+} from '@/lib/reportCharts';
 
 export default function RelatoriosPage() {
   const router = useRouter();
@@ -83,8 +90,8 @@ export default function RelatoriosPage() {
   
   const totalPages = Math.ceil(totalChamados / limit) || 1;
 
-  // Encontrar categoria mais afetada (usando todosChamados)
-  const categoriasContagem = todosChamados.reduce((acc, c) => {
+  // Encontrar a categoria mais solicitada entre os chamados abertos no mês.
+  const categoriasContagem = estatisticasMensais.reduce((acc, c) => {
     acc[c.categoria] = (acc[c.categoria] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
@@ -118,31 +125,19 @@ export default function RelatoriosPage() {
   };
 
   // --- DADOS PARA GRÁFICOS ---
-  const statusCount = estatisticasMensais.reduce((acc, c) => {
-    acc[c.status] = (acc[c.status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const dataPie = Object.keys(statusCount).map(key => ({
-    name: key,
-    value: statusCount[key]
+  const categoriasGrafico = contarCategoriasParaGrafico(estatisticasMensais);
+  const dataPie = categoriasGrafico.map(item => ({
+    name: item.nome,
+    value: item.quantidade,
   }));
-
-  const COLORS = {
-    'Concluído': '#10b981', // emerald-500
-    'Pendente': '#f59e0b',  // amber-500
-    'Em Andamento': '#3b82f6', // blue-500
-  };
-
-  const categoriasChart = estatisticasMensais.reduce((acc, c) => {
-    acc[c.categoria] = (acc[c.categoria] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const dataBar = Object.keys(categoriasChart).map(key => ({
-    name: key,
-    Quantidade: categoriasChart[key]
-  })).sort((a, b) => b.Quantidade - a.Quantidade);
+  const dataBar = contarChamadosPorDiaUtil(estatisticasMensais, mes, ano).map(item => ({
+    dia: item.rotulo,
+    Quantidade: item.quantidade,
+  }));
+  const coresCategorias = [
+    '#E31837', '#2563EB', '#10B981', '#F59E0B', '#8B5CF6',
+    '#EC4899', '#0891B2', '#65A30D', '#EA580C', '#52525B',
+  ];
 
   const exportarPlanilhaCompleta = async () => {
     if (exporting) return;
@@ -153,21 +148,23 @@ export default function RelatoriosPage() {
       // A consulta acontece no clique para a exportacao nunca depender de um
       // estado que ainda esteja carregando em segundo plano.
       const dadosExportacao = await obterRelatorioCompleto(mes, ano);
+      const chamadosAbertosNoMes = await obterEstatisticasMensais(mes, ano);
 
-      if (dadosExportacao.length === 0) {
+      if (dadosExportacao.length === 0 && chamadosAbertosNoMes.length === 0) {
         addToast('N\u00e3o h\u00e1 dados para exportar neste per\u00edodo.', 'warning');
         return;
       }
 
       setTodosChamados(dadosExportacao);
 
-      const contagemCategorias = dadosExportacao.reduce((acc, chamado) => {
-        acc[chamado.categoria] = (acc[chamado.categoria] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      const categoriasDoMes = contarCategoriasParaGrafico(chamadosAbertosNoMes);
+      const diasUteisDoMes = contarChamadosPorDiaUtil(chamadosAbertosNoMes, mes, ano);
+      const [graficoPizzaPng, graficoBarrasPng] = await Promise.all([
+        converterSvgParaPngBase64(criarGraficoPizzaCategorias(categoriasDoMes)),
+        converterSvgParaPngBase64(criarGraficoBarrasDiasUteis(diasUteisDoMes)),
+      ]);
 
-      const categoriaPrincipal = Object.entries(contagemCategorias)
-        .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+      const categoriaPrincipal = categoriasDoMes[0]?.nome || 'N/A';
 
       const temposResolucao = dadosExportacao
         .filter(c => c.data_criacao && c.data_resolucao)
@@ -198,8 +195,10 @@ export default function RelatoriosPage() {
       sheetResumo.columns = [
         { key: 'metrica', width: 38 },
         { key: 'valor', width: 24 },
+        { width: 3 },
+        ...Array.from({ length: 9 }, () => ({ width: 13 })),
       ];
-      sheetResumo.mergeCells('A1:B1');
+      sheetResumo.mergeCells('A1:L1');
       sheetResumo.getCell('A1').value = 'Relat\u00f3rio Maple Help';
       sheetResumo.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FFFFFFFF' } };
       sheetResumo.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
@@ -210,13 +209,43 @@ export default function RelatoriosPage() {
       sheetResumo.addRow({ metrica: 'Categoria Mais Afetada', valor: categoriaPrincipal });
       sheetResumo.addRow({ metrica: 'M\u00e9dia de Tempo de Atendimento', valor: formatarMedia(mediaMs) });
       sheetResumo.addRow({});
-      sheetResumo.addRow({ metrica: 'CONTAGEM POR CATEGORIA', valor: 'QUANTIDADE' });
+      sheetResumo.addRow({ metrica: 'CHAMADOS ABERTOS POR CATEGORIA', valor: 'QUANTIDADE' });
       sheetResumo.getRow(7).font = { bold: true, color: { argb: 'FFFFFFFF' } };
       sheetResumo.getRow(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF27272A' } };
 
-      Object.entries(contagemCategorias).sort((a, b) => b[1] - a[1]).forEach(([categoria, quantidade]) => {
-        sheetResumo.addRow({ metrica: categoria, valor: quantidade });
+      categoriasDoMes.forEach(({ nome, quantidade }) => {
+        sheetResumo.addRow({ metrica: nome, valor: quantidade });
       });
+
+      const inicioDiasUteis = sheetResumo.rowCount + 2;
+      sheetResumo.getCell(`A${inicioDiasUteis}`).value = 'CHAMADOS ABERTOS POR DIA \u00daTIL';
+      sheetResumo.getCell(`B${inicioDiasUteis}`).value = 'QUANTIDADE';
+      sheetResumo.getRow(inicioDiasUteis).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      sheetResumo.getRow(inicioDiasUteis).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF27272A' } };
+      diasUteisDoMes.forEach(({ dia, quantidade }) => {
+        const data = new Date(ano, mes - 1, dia);
+        sheetResumo.addRow({
+          metrica: data.toLocaleDateString('pt-BR'),
+          valor: quantidade,
+        });
+      });
+
+      const graficoPizzaId = workbook.addImage({ base64: graficoPizzaPng, extension: 'png' });
+      const graficoBarrasId = workbook.addImage({ base64: graficoBarrasPng, extension: 'png' });
+      sheetResumo.addImage(graficoPizzaId, {
+        tl: { col: 3, row: 2 },
+        ext: { width: 690, height: 360 },
+      });
+      sheetResumo.addImage(graficoBarrasId, {
+        tl: { col: 3, row: 20 },
+        ext: { width: 760, height: 317 },
+      });
+      sheetResumo.pageSetup = {
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+      };
 
       const sheetDados = workbook.addWorksheet('Dados Completos', {
         views: [{ state: 'frozen', ySplit: 5, showGridLines: false }],
@@ -378,9 +407,9 @@ export default function RelatoriosPage() {
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Gráfico de Status (Pizza) */}
+        {/* Gráfico de Categorias (Pizza) */}
         <SurfaceCard className="p-6">
-          <h3 className="text-text font-bold mb-4">Status dos Chamados (Mês Atual)</h3>
+          <h3 className="text-text font-bold mb-4">Categorias mais solicitadas</h3>
           {estatisticasMensais.length === 0 ? (
             <div className="h-[300px] flex items-center justify-center text-text-subtle">Sem dados</div>
           ) : (
@@ -397,7 +426,7 @@ export default function RelatoriosPage() {
                     dataKey="value"
                   >
                     {dataPie.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[entry.name as keyof typeof COLORS] || '#E31837'} />
+                      <Cell key={`cell-${entry.name}`} fill={coresCategorias[index % coresCategorias.length]} />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -408,27 +437,23 @@ export default function RelatoriosPage() {
           )}
         </SurfaceCard>
 
-        {/* Gráfico de Categorias (Barras) */}
+        {/* Gráfico de Chamados por Dia Útil (Barras) */}
         <SurfaceCard className="p-6">
-          <h3 className="text-text font-bold mb-4">Volume por Categoria (Mês Atual)</h3>
-          {estatisticasMensais.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-text-subtle">Sem dados</div>
-          ) : (
-            <div className="h-[300px]">
+          <h3 className="text-text font-bold mb-4">Chamados por dia útil</h3>
+          <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={dataBar}
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
-                  <XAxis dataKey="name" tick={{fill: '#71717a', fontSize: 12}} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="dia" tick={{fill: '#71717a', fontSize: 11}} tickLine={false} axisLine={false} />
                   <YAxis tick={{fill: '#71717a', fontSize: 12}} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip cursor={{fill: '#f4f4f5'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
                   <Bar dataKey="Quantidade" fill="#E31837" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
-          )}
+          </div>
         </SurfaceCard>
       </div>
 

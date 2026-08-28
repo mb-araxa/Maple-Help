@@ -21,3 +21,33 @@ export interface Chamado {
   user_id?: string; // ID do usuário que abriu o chamado (Supabase Auth)
   avaliacao?: AvaliacaoChamado | null;
 }
+
+export type AutorTipo = 'usuario' | 'ti';
+
+export interface ChamadoMensagem {
+  id: string; // uuid
+  chamado_id: string; // uuid
+  autor_id: string | null; // uuid do usuário no Supabase Auth ou null se excluído
+  autor_nome: string;
+  autor_tipo: AutorTipo;
+  mensagem: string;
+  created_at: string; // timestamptz
+}
+
+export interface ChamadoChatLeitura {
+  chamado_id: string;
+  user_id: string;
+  last_read_at: string; // timestamptz
+}
+
+export type ContadoresNaoLidos = Record<string, number>;
+
+export interface CursorPaginacaoChat {
+  beforeCreatedAt: string;
+  beforeId: string;
+}
+
+export interface AppAdmin {
+  email: string;
+  created_at: string;
+}
