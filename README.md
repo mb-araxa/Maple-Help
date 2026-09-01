@@ -1,117 +1,167 @@
 # Maple Help
 
-Sistema interno de help desk da Maple Bear Araxá para abertura, acompanhamento e gestão de chamados de TI.
+Sistema interno de help desk da **Maple Bear Araxá** para abertura, acompanhamento, comunicação em tempo real e gestão de chamados de suporte de TI.
 
-## Estado atual
+---
 
-O fluxo principal de suporte de TI está implementado: autenticação institucional, abertura e acompanhamento de chamados, chat interno em tempo real por chamado, painel administrativo em tempo real, avaliação do atendimento e relatórios com exportação para Excel.
+## 📌 Estado Atual do Projeto
 
-O projeto está em fase de **estabilização e migração da infraestrutura para as contas corporativas da Maple**. A migração de Supabase e Vercel deve ser tratada como pendente até que as variáveis de ambiente, o banco e os fluxos de produção sejam validados na nova estrutura.
+O fluxo completo de suporte de Tecnologia da Informação (TI) está implementado e validado:
+- Autenticação restrita ao domínio institucional `@maplebeararaxa.com.br`.
+- Abertura de chamados com categorização, local e upload opcional de imagem.
+- Acompanhamento dos próprios chamados com visualização da solução registrada.
+- **Chat interno por chamado**: canal de conversa individual em tempo real entre solicitante e equipe de TI, com controle de leitura, badges de mensagens não lidas e bloqueio automático de novas mensagens após a conclusão do chamado. As notificações operam estritamente dentro do aplicativo (sem envio de mensagens externas, SMS ou WhatsApp).
+- Avaliação única de 1 a 5 estrelas com comentário opcional após conclusão.
+- Notificações opcionais por e-mail (via Resend) ao assumir e concluir chamados, com link direto para avaliação.
+- Painel administrativo em tempo real (Kanban) com atualização instantânea via Supabase Realtime.
+- Relatórios mensais com métricas consolidadas, gráficos e exportação completa para planilha Excel (`.xlsx`).
+- Proteção de taxa (Rate Limit) por IP para chamados e por usuário para o chat via Upstash Redis (com fallback em memória).
 
-O módulo de Manutenção Estrutural aparece no menu, mas continua indisponível e não faz parte do escopo funcional atual.
+> **Infraestrutura Corporativa Confirmada (Setembro/2026):**
+> - Projeto Supabase: `Maple Help-arx` (`pggzxierizlypanjvlyg`).
+> - Esquema e políticas de RLS aplicados e testados.
+> - As funções de validação de domínio institucional foram protegidas com `SECURITY INVOKER`, `search_path = ''` e permissão exclusiva para `supabase_auth_admin`.
+> - O aviso restante no Security Advisor (*Leaked Password Protection Disabled*) decorre de limitação do plano Free do Supabase (recurso exclusivo de planos pagos; nenhuma contratação deve ser feita sem aprovação).
+> - O módulo **Manutenção Estrutural** permanece apenas como indicador visual de expansão futura no menu.
 
-## Funcionalidades
+---
 
-- Login, cadastro e recuperação de senha com e-mail `@maplebeararaxa.com.br`.
-- Abertura de chamados de TI com categoria, local, descrição e imagem opcional.
-- Acompanhamento dos próprios chamados e da solução registrada pela equipe.
-- **Chat interno por chamado**: conversa em tempo real e independente para cada chamado entre o solicitante e a equipe de TI, com controle de leitura, badges de mensagens não lidas e bloqueio mútuo após conclusão. Notificações ocorrem exclusivamente dentro do aplicativo (sem envio de e-mails, Resend ou WhatsApp para o chat).
-- Avaliação de 1 a 5 estrelas após a conclusão do atendimento.
-- Avisos por e-mail no chamado original, quando o serviço legado estiver configurado, ao aceitar ou concluir um chamado, com atalho para a avaliação.
-- Painel administrativo com chamados pendentes, em andamento e concluídos no dia.
-- Ações administrativas para assumir, concluir e excluir chamados.
-- Atualização do painel e do chat em tempo real pelo Supabase Realtime.
-- Relatórios mensais com gráfico de categorias, chamados por dia útil, paginação e exportação completa em `.xlsx` com os gráficos.
-- Limite de taxa (Rate Limit) para criação de chamados e mensagens do chat via Upstash Redis (com fallback em memória).
+## 🚀 Funcionalidades
 
-## Tecnologias
+### Para Colaboradores (Solicitantes)
+- **Acesso Institucional**: Login, cadastro e recuperação de senha validados para `@maplebeararaxa.com.br`.
+- **Abertura Rápida**: Formulário simplificado com categorias predefinidas, descrição e anexo de imagem (JPEG, PNG ou WEBP até 5 MB).
+- **Meus Chamados**: Acompanhamento do status (`Pendente`, `Em Andamento`, `Concluído`) e solução detalhada.
+- **Chat em Tempo Real**: Conversa direta com a equipe de TI no card do chamado, com badges de mensagens não lidas e envio otimizado.
+- **Avaliação do Atendimento**: Formulário de nota (1 a 5) e feedback após o encerramento do chamado.
 
-- Next.js 16 com App Router
-- React 19 e TypeScript
-- Tailwind CSS 4
-- Supabase Auth, PostgreSQL, Storage e Realtime
-- Upstash Redis para rate limit em produção, com fallback em memória no ambiente local
-- ExcelJS e FileSaver para exportação de planilhas
-- Recharts para gráficos
-- Vitest e Testing Library para testes unitários e de componentes
+### Para a Equipe de TI (Administradores)
+- **Painel Kanban em Tempo Real**: Visualização centralizada das filas de chamados *Pendentes*, *Em Andamento* e *Concluídos no Dia*.
+- **Gestão de Chamados**: Ações para assumir chamado (atribuindo responsável), finalizar (com solução e tempo gasto) ou excluir.
+- **Atendimento Integrado via Chat**: Aba de conversa dedicada no modal do chamado com histórico completo e identificação como "Equipe de TI".
+- **Relatórios & Métricas**: Filtro por mês/ano com volume total, categorias mais recorrentes, chamados por dia útil e exportação integral para Excel com gráficos SVG embutidos.
 
-## Execução local
+---
 
-### Requisitos
+## 🛠️ Tecnologias e Serviços
 
-- Node.js 20.9.0 ou superior
-- npm
-- Um projeto Supabase configurado com o esquema usado pelo Maple Help
+- **Frontend & Backend**: [Next.js 16.2.10](https://nextjs.org/) (App Router, Server Actions) com [React 19.2.4](https://react.dev/) e [TypeScript 5](https://www.typescriptlang.org/).
+- **Estilização**: [Tailwind CSS 4](https://tailwindcss.com/) com design system corporativo.
+- **Banco de Dados & Autenticação**: [Supabase](https://supabase.com/) (PostgreSQL 15+, Supabase Auth, Storage para anexos e Realtime).
+- **Controle de Acesso**: Row Level Security (RLS) estrito no banco, autorização centralizada em `public.app_admins` e middleware `proxy.ts`.
+- **Rate Limit**: [@upstash/ratelimit](https://upstash.com/) e [@upstash/redis](https://upstash.com/) com fallback automático em memória para ambiente de desenvolvimento.
+- **Exportação de Dados**: [ExcelJS](https://github.com/exceljs/exceljs) e [FileSaver](https://github.com/eligrey/FileSaver.js).
+- **Visualização de Dados**: [Recharts](https://recharts.org/) na web e gerador customizado de gráficos vetoriais SVG para a planilha.
+- **E-mails Transacionais Opcionais**: [Resend](https://resend.com/) via chamadas HTTP seguras com chaves de idempotência (apenas para atualizações de status de chamado).
+- **Testes & Qualidade**: [Vitest](https://vitest.dev/), Testing Library, ESLint 9 e TypeScript Strict Mode.
 
-### Configuração
+---
 
-1. Instale as dependências:
+## 💻 Instalação e Execução Local
 
+### Pré-requisitos
+- **Node.js**: Versão `20.9.0` ou superior.
+- **npm**: Gerenciador de pacotes padrão.
+- Projeto no **Supabase** configurado com o esquema SQL do projeto.
+
+### Passo a Passo
+
+1. **Clone o repositório e acesse o diretório**:
+   ```bash
+   git clone https://github.com/mb-araxa/Maple-Help.git
+   cd Maple-Help
+   ```
+
+2. **Instale as dependências exatas**:
    ```bash
    npm ci
    ```
 
-2. Crie o arquivo `.env.local` na raiz:
-
+3. **Configure as variáveis de ambiente**:
+   Crie um arquivo `.env.local` na raiz do projeto:
    ```env
+   # Obrigatórias — Supabase
    NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima_publicavel
 
-   # Notificações do chamado original (opcional)
-   SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role
-   RESEND_API_KEY=sua_chave_resend
-   RESEND_EMAIL_DOMAIN=dominio-verificado.com.br
-   RESEND_FROM_EMAIL=Maple Help <outro-endereco@dominio-verificado.com.br>
-   APP_URL=https://maple-help.vercel.app
+   # Opcionais — Notificações de Status do Chamado via Resend
+   SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_secreta
+   RESEND_API_KEY=re_sua_chave_resend
+   RESEND_EMAIL_DOMAIN=seu-dominio-verificado.com.br
+   RESEND_FROM_EMAIL=Maple Help <chamados@seu-dominio-verificado.com.br>
+   APP_URL=http://localhost:3000
 
-   # Opcionais no ambiente local; recomendadas em produção
-   UPSTASH_REDIS_REST_URL=https://seu-redis.upstash.io
-   UPSTASH_REDIS_REST_TOKEN=seu_token_upstash
+   # Recomendadas em Produção — Rate Limit Distribuído (Upstash Redis)
+   UPSTASH_REDIS_REST_URL=https://seu-banco.upstash.io
+   UPSTASH_REDIS_REST_TOKEN=seu_token_upstash_rest
    ```
 
-   *Nota de Segurança: A lista oficial de administradores é gerenciada de forma centralizada e segura no banco de dados na tabela `public.app_admins`.*
+   > ⚠️ **Atenção:** Nunca versionar arquivos `.env` nem expor a `SUPABASE_SERVICE_ROLE_KEY` no frontend ou em commits.
 
-3. Inicie o projeto:
-
+4. **Inicie o servidor de desenvolvimento**:
    ```bash
    npm run dev
    ```
 
-4. Acesse [http://localhost:3000](http://localhost:3000).
+5. **Acesse no navegador**:
+   Abra [http://localhost:3000](http://localhost:3000).
 
-Não versionar arquivos `.env` nem incluir credenciais na documentação.
+---
 
-## Comandos
+## 📋 Comandos Disponíveis
 
 | Comando | Finalidade |
 | --- | --- |
-| `npm run dev` | Inicia o ambiente de desenvolvimento |
-| `npm run build` | Gera a versão de produção |
-| `npm run start` | Executa a versão já construída |
-| `npm run lint` | Valida padrões e problemas estáticos |
-| `npm run test` | Executa os testes unitários com Vitest |
-| `npx tsc --noEmit` | Valida os tipos TypeScript |
+| `npm run dev` | Inicia o servidor local de desenvolvimento (Turbopack / Next.js) |
+| `npm run build` | Compila o projeto e gera a build de produção otimizada |
+| `npm run start` | Executa o servidor Node.js com a build de produção |
+| `npm run lint` | Executa o linter ESLint para validar boas práticas e sintaxe |
+| `npm run test` | Roda a suíte de testes unitários e de componentes com Vitest |
+| `npx tsc --noEmit` | Executa a checagem estática de tipos do TypeScript sem emitir arquivos |
 
-## Estrutura principal
+---
+
+## 🗄️ Estrutura do Banco de Dados
+
+O banco de dados PostgreSQL do Supabase possui 5 tabelas principais protegidas por Row Level Security (RLS):
+
+1. **`public.app_admins`**: Fonte única oficial de autorização administrativa (`email`, `created_at`).
+2. **`public.chamados`**: Registro dos atendimentos de TI (`solicitante`, `local`, `categoria`, `descricao`, `status`, `resolucao`, `tempo_gasto`, `anexo_url`, `user_id`).
+3. **`public.chamado_mensagens`**: Histórico do chat por chamado (`chamado_id`, `autor_id`, `autor_nome`, `autor_tipo`, `mensagem`, `created_at`).
+4. **`public.chamado_chat_leituras`**: Controle de leitura por usuário e chamado (`chamado_id`, `user_id`, `last_read_at`).
+5. **`public.chamado_avaliacoes`**: Avaliação de 1 a 5 estrelas e comentário enviada pelo solicitante após a conclusão.
+
+> ⚠️ **Aviso sobre o arquivo SQL consolidado:**
+> O arquivo [`supabase/maple_help_schema.sql`](./supabase/maple_help_schema.sql) contém a definição completa do banco para **criação de um ambiente novo do zero**. Não o execute cegamente sobre um banco já em operação para evitar conflitos de políticas ou erros em publicações Realtime (`already member of publication`). Para alterações futuras, utilize scripts de migração incrementais.
+
+---
+
+## 📁 Estrutura do Repositório
 
 ```text
-app/                    Rotas, páginas e Server Actions (chamados.ts, chamadoChat.ts)
-components/             Componentes de interface, formulários e modais
-components/chamado-chat/
-                        Componentes do chat interno (ChamadoChat, MensagemChat, Compositor, Badges)
-components/ui/          Componentes visuais reutilizáveis
-lib/                    Cliente Supabase e funções compartilhadas
-types/                  Tipos do domínio (database.ts)
-__tests__/              Testes unitários e de componentes
-supabase/migrations/    Migrações incrementais
-supabase/maple_help_schema.sql
-                        Reprodução do esquema atual para a migração corporativa
+├── app/                        # Next.js App Router (Páginas, Layouts e Server Actions)
+│   ├── actions/                # Server Actions (chamados.ts, chamadoChat.ts)
+│   ├── adm/                    # Painel administrativo e relatórios mensais
+│   ├── chamado/                # Abertura de chamado e Meus Chamados
+│   ├── menu/                   # Hub de navegação pós-login
+│   ├── globals.css             # Design tokens e estilos globais
+│   └── page.tsx                # Tela de Login / Cadastro / Recuperação
+├── components/                 # Componentes React reutilizáveis
+│   ├── chamado-chat/           # Componentes do Chat (ChamadoChat, Mensagem, Compositor, Badges)
+│   ├── ui/                     # Primitivos de UI (Button, Input, SurfaceCard, etc.)
+│   ├── ChamadoForm.tsx         # Formulário de abertura com upload
+│   └── ChamadoModal.tsx        # Modal administrativo de atendimento
+├── lib/                        # Utilitários, clientes de banco, gráficos e e-mails
+├── types/                      # Definições de tipos TypeScript (database.ts)
+├── supabase/                   # Esquema SQL do banco e testes automatizados de RLS
+├── __tests__/                  # Testes unitários e de integração com Vitest
+└── proxy.ts                    # Middleware de proteção de rotas e renovação de sessão
 ```
 
-## Documentação
+---
 
-- [Documentação funcional e técnica](./DOCUMENTATION.md)
-- [Contexto operacional para agentes e mantenedores](./CONTEXTO_AGENTE.md)
-- [Esquema atual do Supabase](./supabase/maple_help_schema.sql)
+## 📚 Documentação Complementar
 
-Antes de alterar infraestrutura ou comportamento do sistema, confira o estado de migração registrado em `CONTEXTO_AGENTE.md` e mantenha os três documentos sincronizados.
+- 📖 [**DOCUMENTATION.md**](./DOCUMENTATION.md): Manual técnico e funcional exaustivo (regras de negócio, segurança, manutenção, diagnósticos, deploy e rollback).
+- 🧠 [**CONTEXTO_AGENTE.md**](./CONTEXTO_AGENTE.md): Guia de contexto operacional e regras estritas para desenvolvedores e agentes de IA.
+- 🗃️ [**Esquema SQL Consolidado**](./supabase/maple_help_schema.sql): Definição estrutural do banco de dados.
