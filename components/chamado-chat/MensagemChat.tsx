@@ -5,6 +5,7 @@ import { ChamadoMensagem } from '@/types/database';
 export interface MensagemChatProps {
   mensagem: ChamadoMensagem;
   isPropria: boolean;
+  responsavel?: string | null;
   statusEnvio?: 'sending' | 'sent' | 'error';
   onRetry?: () => void;
 }
@@ -12,6 +13,7 @@ export interface MensagemChatProps {
 export function MensagemChat({
   mensagem,
   isPropria,
+  responsavel,
   statusEnvio = 'sent',
   onRetry,
 }: MensagemChatProps) {
@@ -24,6 +26,15 @@ export function MensagemChat({
 
   const isTI = mensagem.autor_tipo === 'ti';
 
+  const nomeResponsavel = responsavel?.trim();
+  const autorNomeNormalizado = mensagem.autor_nome?.trim();
+
+  const nomeExibido = isPropria
+    ? 'Você'
+    : isTI
+      ? nomeResponsavel || (autorNomeNormalizado && autorNomeNormalizado !== 'Equipe de TI' ? autorNomeNormalizado : 'Equipe de TI')
+      : autorNomeNormalizado || 'Solicitante';
+
   return (
     <div
       className={`flex flex-col gap-1 w-full max-w-[85%] sm:max-w-[75%] ${
@@ -33,7 +44,7 @@ export function MensagemChat({
       {/* Cabeçalho do autor */}
       <div className="flex items-center gap-2 px-1 text-xs text-text-muted">
         <span className="font-semibold text-text">
-          {isPropria ? 'Você' : mensagem.autor_nome}
+          {nomeExibido}
         </span>
         
         {isTI ? (

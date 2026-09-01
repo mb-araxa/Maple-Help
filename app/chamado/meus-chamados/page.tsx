@@ -246,6 +246,7 @@ export default function MeusChamadosPage() {
                         <ChamadoChat
                           chamadoId={chamado.id}
                           status={chamado.status}
+                          responsavel={chamado.responsavel}
                           isAdm={false}
                           onUnreadCleared={() => handleUnreadCleared(chamado.id)}
                         />

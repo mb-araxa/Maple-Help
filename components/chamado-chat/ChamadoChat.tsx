@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 interface ChamadoChatProps {
   chamadoId: string;
   status: string;
+  responsavel?: string | null;
   isAdm?: boolean;
   currentUserId?: string;
   onUnreadCleared?: () => void;
@@ -27,6 +28,7 @@ interface MensagemComStatus extends ChamadoMensagem {
 export function ChamadoChat({
   chamadoId,
   status,
+  responsavel,
   isAdm = false,
   currentUserId,
   onUnreadCleared,
@@ -382,6 +384,7 @@ export function ChamadoChat({
                 key={msg.id}
                 mensagem={msg}
                 isPropria={isPropria}
+                responsavel={responsavel}
                 statusEnvio={msg.statusEnvio}
                 onRetry={msg.statusEnvio === 'error' ? () => handleRetry(msg.id, msg.mensagem) : undefined}
               />

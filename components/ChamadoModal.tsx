@@ -176,6 +176,7 @@ export function ChamadoModal({
               <ChamadoChat
                 chamadoId={chamado.id}
                 status={chamado.status}
+                responsavel={chamado.responsavel}
                 isAdm={true}
                 onUnreadCleared={onUnreadCleared}
               />

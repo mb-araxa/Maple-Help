@@ -368,6 +368,95 @@ describe('Chat por Chamado - Testes de Unidade e Integração', () => {
       fireEvent.click(retryBtn);
       expect(onRetry).toHaveBeenCalledTimes(1);
     });
+
+    it('deve exibir o nome do responsável quando autor_tipo for ti e responsavel estiver preenchido', () => {
+      const msgTI: ChamadoMensagem = {
+        ...mensagemExemplo,
+        autor_id: 'admin-1',
+        autor_nome: 'Equipe de TI',
+        autor_tipo: 'ti',
+        mensagem: 'Olá, irei resolver seu problema.',
+      };
+
+      render(<MensagemChat mensagem={msgTI} isPropria={false} responsavel="Isaque" />);
+      expect(screen.getByText('Isaque')).toBeDefined();
+      expect(screen.getByText('TI')).toBeDefined();
+      expect(screen.queryByText('Equipe de TI')).toBeNull();
+      expect(screen.getByText('Olá, irei resolver seu problema.')).toBeDefined();
+    });
+
+    it('deve usar o responsável atual mesmo em mensagens antigas com autor_nome = "Equipe de TI"', () => {
+      const msgAntigaTI: ChamadoMensagem = {
+        ...mensagemExemplo,
+        autor_id: 'admin-1',
+        autor_nome: 'Equipe de TI',
+        autor_tipo: 'ti',
+        mensagem: 'Mensagem antiga enviada pela TI.',
+      };
+
+      render(<MensagemChat mensagem={msgAntigaTI} isPropria={false} responsavel="Pedro" />);
+      expect(screen.getByText('Pedro')).toBeDefined();
+      expect(screen.queryByText('Equipe de TI')).toBeNull();
+    });
+
+    it('deve exibir "Equipe de TI" como fallback quando responsavel for indefinido ou nulo', () => {
+      const msgTI: ChamadoMensagem = {
+        ...mensagemExemplo,
+        autor_id: 'admin-1',
+        autor_nome: 'Equipe de TI',
+        autor_tipo: 'ti',
+        mensagem: 'Mensagem sem responsável definido.',
+      };
+
+      render(<MensagemChat mensagem={msgTI} isPropria={false} responsavel={null} />);
+      expect(screen.getByText('Equipe de TI')).toBeDefined();
+      expect(screen.getByText('TI')).toBeDefined();
+    });
+
+    it('deve usar fallback "Equipe de TI" quando responsavel contiver apenas espaços', () => {
+      const msgTI: ChamadoMensagem = {
+        ...mensagemExemplo,
+        autor_id: 'admin-1',
+        autor_nome: 'Equipe de TI',
+        autor_tipo: 'ti',
+        mensagem: 'Mensagem com responsável vazio.',
+      };
+
+      render(<MensagemChat mensagem={msgTI} isPropria={false} responsavel="   " />);
+      expect(screen.getByText('Equipe de TI')).toBeDefined();
+      expect(screen.getByText('TI')).toBeDefined();
+    });
+
+    it('deve exibir "Você" quando a mensagem for própria mesmo que responsavel esteja definido', () => {
+      const msgTIPropria: ChamadoMensagem = {
+        ...mensagemExemplo,
+        autor_id: 'admin-1',
+        autor_nome: 'Equipe de TI',
+        autor_tipo: 'ti',
+        mensagem: 'Minha própria mensagem de TI.',
+      };
+
+      render(<MensagemChat mensagem={msgTIPropria} isPropria={true} responsavel="Isaque" />);
+      expect(screen.getByText('Você')).toBeDefined();
+      expect(screen.queryByText('Isaque')).toBeNull();
+      expect(screen.getByText('TI')).toBeDefined();
+    });
+
+    it('não deve atribuir o nome do responsável a mensagens do solicitante', () => {
+      const msgSolicitante: ChamadoMensagem = {
+        ...mensagemExemplo,
+        autor_id: 'user-2',
+        autor_nome: 'Aline',
+        autor_tipo: 'usuario',
+        mensagem: 'Poderia arrumar meu computador.',
+      };
+
+      render(<MensagemChat mensagem={msgSolicitante} isPropria={false} responsavel="Isaque" />);
+      expect(screen.getByText('Aline')).toBeDefined();
+      expect(screen.getByText('Solicitante')).toBeDefined();
+      expect(screen.queryByText('Isaque')).toBeNull();
+      expect(screen.queryByText('TI')).toBeNull();
+    });
   });
 
   describe('4. Componente CompositorMensagem', () => {
@@ -944,6 +1033,130 @@ describe('Chat por Chamado - Testes de Unidade e Integração', () => {
 
       // O botão desaparece pois hasMore = false
       expect(screen.queryByText('Carregar mensagens anteriores')).toBeNull();
+    });
+  });
+
+  describe('7. Exibição do Responsável da TI no Componente ChamadoChat', () => {
+    it('deve repassar o nome do responsável para as mensagens da TI quando visualizado pelo solicitante', async () => {
+      vi.spyOn(chatActions, 'obterMensagensDoChamado').mockResolvedValue({
+        mensagens: [
+          {
+            id: 'msg-u1',
+            chamado_id: 'chamado-10',
+            autor_id: 'user-solicitante',
+            autor_nome: 'Aline',
+            autor_tipo: 'usuario' as const,
+            mensagem: 'Meu monitor não liga.',
+            created_at: '2026-08-30T10:00:00Z',
+          },
+          {
+            id: 'msg-ti1',
+            chamado_id: 'chamado-10',
+            autor_id: 'admin-isaque',
+            autor_nome: 'Equipe de TI',
+            autor_tipo: 'ti' as const,
+            mensagem: 'Olá Aline, estou indo verificar o cabo de força.',
+            created_at: '2026-08-30T10:05:00Z',
+          },
+        ],
+        hasMore: false,
+      });
+
+      vi.spyOn(chatActions, 'marcarChatComoLido').mockResolvedValue({ success: true });
+
+      render(
+        <ChamadoChat
+          chamadoId="chamado-10"
+          status="Em Andamento"
+          responsavel="Isaque"
+          currentUserId="user-solicitante"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Meu monitor não liga.')).toBeDefined();
+        expect(screen.getByText('Olá Aline, estou indo verificar o cabo de força.')).toBeDefined();
+      });
+
+      // A mensagem própria do solicitante deve exibir "Você"
+      expect(screen.getByText('Você')).toBeDefined();
+
+      // A mensagem da TI recebida pelo solicitante deve exibir o nome do responsável "Isaque" e badge "TI"
+      expect(screen.getByText('Isaque')).toBeDefined();
+      expect(screen.getByText('TI')).toBeDefined();
+      expect(screen.queryByText('Equipe de TI')).toBeNull();
+    });
+
+    it('deve exibir o nome do responsável no histórico de um chamado Concluído', async () => {
+      vi.spyOn(chatActions, 'obterMensagensDoChamado').mockResolvedValue({
+        mensagens: [
+          {
+            id: 'msg-ti2',
+            chamado_id: 'chamado-11',
+            autor_id: 'admin-pedro',
+            autor_nome: 'Equipe de TI',
+            autor_tipo: 'ti' as const,
+            mensagem: 'Problema solucionado com sucesso.',
+            created_at: '2026-08-30T11:00:00Z',
+          },
+        ],
+        hasMore: false,
+      });
+
+      vi.spyOn(chatActions, 'marcarChatComoLido').mockResolvedValue({ success: true });
+
+      render(
+        <ChamadoChat
+          chamadoId="chamado-11"
+          status="Concluído"
+          responsavel="Pedro"
+          currentUserId="user-solicitante"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Problema solucionado com sucesso.')).toBeDefined();
+        expect(screen.getByText('Pedro')).toBeDefined();
+        expect(screen.getByText('TI')).toBeDefined();
+      });
+
+      // Verifica aviso de chamado concluído
+      expect(
+        screen.getByText(/Este atendimento foi concluído\. A conversa está disponível apenas para consulta\./i)
+      ).toBeDefined();
+    });
+
+    it('deve manter funcionamento correto e fallback "Equipe de TI" quando responsavel não for informado', async () => {
+      vi.spyOn(chatActions, 'obterMensagensDoChamado').mockResolvedValue({
+        mensagens: [
+          {
+            id: 'msg-ti3',
+            chamado_id: 'chamado-12',
+            autor_id: 'admin-desconhecido',
+            autor_nome: 'Equipe de TI',
+            autor_tipo: 'ti' as const,
+            mensagem: 'Atendimento inicial sem responsável.',
+            created_at: '2026-08-30T12:00:00Z',
+          },
+        ],
+        hasMore: false,
+      });
+
+      vi.spyOn(chatActions, 'marcarChatComoLido').mockResolvedValue({ success: true });
+
+      render(
+        <ChamadoChat
+          chamadoId="chamado-12"
+          status="Pendente"
+          currentUserId="user-solicitante"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Atendimento inicial sem responsável.')).toBeDefined();
+        expect(screen.getByText('Equipe de TI')).toBeDefined();
+        expect(screen.getByText('TI')).toBeDefined();
+      });
     });
   });
 });
