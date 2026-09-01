@@ -312,7 +312,8 @@ create policy "Permitir Upload 1tdrie1_1"
 create or replace function public.check_email_domain()
 returns trigger
 language plpgsql
-security definer
+security invoker
+set search_path = ''
 as $function$
 begin
   if split_part(new.email, '@', 2) != 'maplebeararaxa.com.br' then
@@ -325,7 +326,8 @@ $function$;
 create or replace function public.validar_dominio_maple()
 returns trigger
 language plpgsql
-security definer
+security invoker
+set search_path = ''
 as $function$
 begin
   if new.email not like '%@maplebeararaxa.com.br' then
@@ -335,10 +337,14 @@ begin
 end;
 $function$;
 
+revoke execute on function public.check_email_domain()
+  from public, anon, authenticated, service_role;
+revoke execute on function public.validar_dominio_maple()
+  from public, anon, authenticated, service_role;
 grant execute on function public.check_email_domain()
-  to public, anon, authenticated, service_role;
+  to supabase_auth_admin;
 grant execute on function public.validar_dominio_maple()
-  to public, anon, authenticated, service_role;
+  to supabase_auth_admin;
 
 drop trigger if exists ensure_allowed_domain on auth.users;
 create trigger ensure_allowed_domain

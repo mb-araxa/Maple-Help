@@ -14,7 +14,7 @@ Este arquivo registra o estado atual do projeto para futuras sessões de manuten
 
 ### Preparado
 
-- O esquema atual do banco foi consolidado em `supabase/maple_help_schema.sql` e a migration oficial do chat está em `supabase/migrations/20260828185023_chamado_chat.sql`.
+- O esquema atual do banco, incluindo o chat por chamado, está consolidado em `supabase/maple_help_schema.sql`.
 - A autorização de administradores está unificada no banco em `public.app_admins`.
 - O repositório contém as dependências e configurações usadas pelo aplicativo atual.
 - A conta corporativa de destino foi acessada para preparação da mudança.
@@ -73,7 +73,6 @@ Não afirmar que a migração foi concluída apenas porque as contas corporativa
 | Relatórios e Excel | `app/adm/relatorios/page.tsx` |
 | Proteção de rotas | `proxy.ts` |
 | Tipos do domínio | `types/database.ts` |
-| Migração do Chat | `supabase/migrations/20260828185023_chamado_chat.sql` |
 | Esquema consolidado | `supabase/maple_help_schema.sql` |
 
 ## Variáveis esperadas

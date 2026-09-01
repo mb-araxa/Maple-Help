@@ -243,7 +243,7 @@ export async function enviarMensagemDoChamado(
 
     if (error) {
       if (error.code === '42P01') {
-        throw new Error('A tabela do chat ainda não foi criada no banco de dados. Execute a migration 20260828185023_chamado_chat.sql no Supabase.');
+        throw new Error('A tabela do chat ainda não foi criada no banco de dados. Aplique o esquema consolidado do projeto no Supabase.');
       }
       throw error;
     }
