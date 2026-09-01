@@ -158,10 +158,7 @@ export function ChamadoModal({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setActiveTab('conversa');
-                onUnreadCleared?.();
-              }}
+              onClick={() => setActiveTab('conversa')}
               className={`py-3 px-4 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
                 activeTab === 'conversa'
                   ? 'border-brand-500 text-brand-600'

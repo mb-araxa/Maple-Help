@@ -187,6 +187,16 @@ export default function Dashboard() {
     }
   };
 
+  const handleUnreadCleared = useCallback((chamadoId: string) => {
+    setContadoresNaoLidos(prev => {
+      if (!prev[chamadoId]) return prev;
+      return {
+        ...prev,
+        [chamadoId]: 0,
+      };
+    });
+  }, []);
+
   // Separação dos chamados nas colunas do Kanban
   const pendentes = chamados.filter(c => c.status === 'Pendente');
   const emAndamento = chamados.filter(c => c.status === 'Em Andamento');
@@ -328,12 +338,7 @@ export default function Dashboard() {
           onConcluir={handleConcluir}
           onDelete={handleDelete}
           unreadCount={contadoresNaoLidos[chamadoSelecionado.id] || 0}
-          onUnreadCleared={() => {
-            setContadoresNaoLidos(prev => ({
-              ...prev,
-              [chamadoSelecionado.id]: 0,
-            }));
-          }}
+          onUnreadCleared={() => handleUnreadCleared(chamadoSelecionado.id)}
         />
       )}
     </div>

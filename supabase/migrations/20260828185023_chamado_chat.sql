@@ -18,8 +18,9 @@ insert into public.app_admins (email) values
 on conflict (email) do nothing;
 
 alter table public.app_admins enable row level security;
-revoke all on table public.app_admins from public, anon;
-grant select on table public.app_admins to authenticated, service_role;
+revoke all on table public.app_admins from public, anon, authenticated;
+grant select on table public.app_admins to authenticated;
+grant all on table public.app_admins to service_role;
 
 drop policy if exists "app_admins_select_own" on public.app_admins;
 create policy "app_admins_select_own" on public.app_admins
@@ -58,8 +59,9 @@ drop policy if exists "chamados_insert" on public.chamados;
 drop policy if exists "chamados_update" on public.chamados;
 drop policy if exists "chamados_delete" on public.chamados;
 
-revoke all on table public.chamados from anon;
-grant select, insert, update, delete on table public.chamados to authenticated, service_role;
+revoke all on table public.chamados from anon, authenticated;
+grant select, insert, update, delete on table public.chamados to authenticated;
+grant all on table public.chamados to service_role;
 
 create policy "chamados_select" on public.chamados
   for select to authenticated
@@ -93,8 +95,9 @@ create table if not exists public.chamado_mensagens (
 create index if not exists idx_chamado_mensagens_cursor 
   on public.chamado_mensagens (chamado_id, created_at asc, id asc);
 
-revoke all on table public.chamado_mensagens from public, anon;
-grant select, insert on table public.chamado_mensagens to authenticated, service_role;
+revoke all on table public.chamado_mensagens from public, anon, authenticated;
+grant select, insert on table public.chamado_mensagens to authenticated;
+grant all on table public.chamado_mensagens to service_role;
 
 alter table public.chamado_mensagens enable row level security;
 
@@ -110,8 +113,12 @@ declare
   v_is_admin boolean;
   v_solicitante text;
 begin
-  v_is_admin := public.is_admin();
+  if auth.uid() is null then
+    raise exception 'Usuário não autenticado.';
+  end if;
+
   NEW.autor_id := auth.uid();
+  v_is_admin := public.is_admin();
   
   if v_is_admin then
     NEW.autor_tipo := 'ti';
@@ -119,7 +126,7 @@ begin
   else
     NEW.autor_tipo := 'usuario';
     select solicitante into v_solicitante from public.chamados where id = NEW.chamado_id;
-    NEW.autor_nome := coalesce(nullif(trim(NEW.autor_nome), ''), v_solicitante, 'Usuário');
+    NEW.autor_nome := coalesce(nullif(trim(v_solicitante), ''), 'Usuário');
   end if;
   
   return NEW;
@@ -185,8 +192,9 @@ create table if not exists public.chamado_chat_leituras (
 create index if not exists idx_chamado_chat_leituras_user_chamado
   on public.chamado_chat_leituras (user_id, chamado_id);
 
-revoke all on table public.chamado_chat_leituras from public, anon;
-grant select, insert, update on table public.chamado_chat_leituras to authenticated, service_role;
+revoke all on table public.chamado_chat_leituras from public, anon, authenticated;
+grant select, insert, update on table public.chamado_chat_leituras to authenticated;
+grant all on table public.chamado_chat_leituras to service_role;
 
 alter table public.chamado_chat_leituras enable row level security;
 

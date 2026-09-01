@@ -43,10 +43,19 @@ export function ChamadoChat({
   const containerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const onUnreadClearedRef = useRef(onUnreadCleared);
+  const hasDisconnectedRef = useRef(false);
 
   useEffect(() => {
     onUnreadClearedRef.current = onUnreadCleared;
   }, [onUnreadCleared]);
+
+  const ordenarMensagens = useCallback((lista: MensagemComStatus[]): MensagemComStatus[] => {
+    return [...lista].sort((a, b) => {
+      const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return a.id.localeCompare(b.id);
+    });
+  }, []);
 
   // Obtém o ID do usuário conectado caso não tenha sido passado por props
   useEffect(() => {
@@ -84,13 +93,15 @@ export function ChamadoChat({
     setError(null);
     try {
       const res = await obterMensagensDoChamado(chamadoId, 50);
-      setMensagens(res.mensagens.map(m => ({ ...m, statusEnvio: 'sent' })));
+      setMensagens(ordenarMensagens(res.mensagens.map(m => ({ ...m, statusEnvio: 'sent' }))));
       setHasMore(res.hasMore);
       setNextCursor(res.nextCursor);
 
-      // Marca o chamado como lido
-      await marcarChatComoLido(chamadoId);
-      onUnreadClearedRef.current?.();
+      // Marca o chamado como lido e só zera badge em caso de sucesso confirmado
+      const markRes = await marcarChatComoLido(chamadoId);
+      if (markRes.success) {
+        onUnreadClearedRef.current?.();
+      }
 
       setTimeout(() => scrollToBottom(false), 50);
     } catch (err) {
@@ -103,7 +114,7 @@ export function ChamadoChat({
     } finally {
       setLoading(false);
     }
-  }, [chamadoId, scrollToBottom]);
+  }, [chamadoId, ordenarMensagens, scrollToBottom]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -124,7 +135,10 @@ export function ChamadoChat({
         // Deduplica com mensagens já presentes
         const idsExistentes = new Set(prev.map(m => m.id));
         const novasMensagens = res.mensagens.filter(m => !idsExistentes.has(m.id));
-        return [...novasMensagens.map(m => ({ ...m, statusEnvio: 'sent' as const })), ...prev];
+        return ordenarMensagens([
+          ...novasMensagens.map(m => ({ ...m, statusEnvio: 'sent' as const })),
+          ...prev,
+        ]);
       });
       setHasMore(res.hasMore);
       setNextCursor(res.nextCursor);
@@ -155,7 +169,7 @@ export function ChamadoChat({
           table: 'chamado_mensagens',
           filter: `chamado_id=eq.${chamadoId}`,
         },
-        (payload) => {
+        async (payload) => {
           const novaMsg = payload.new as ChamadoMensagem;
 
           setMensagens(prev => {
@@ -164,15 +178,17 @@ export function ChamadoChat({
             if (index !== -1) {
               const updated = [...prev];
               updated[index] = { ...novaMsg, statusEnvio: 'sent' };
-              return updated;
+              return ordenarMensagens(updated);
             }
-            return [...prev, { ...novaMsg, statusEnvio: 'sent' }];
+            return ordenarMensagens([...prev, { ...novaMsg, statusEnvio: 'sent' }]);
           });
 
-          // Se a mensagem for de outra pessoa, marca como lida e atualiza badges
+          // Se a mensagem for de outra pessoa, marca como lida e atualiza badges apenas com sucesso
           if (resolvedUserId && novaMsg.autor_id !== resolvedUserId) {
-            marcarChatComoLido(chamadoId, novaMsg.created_at);
-            onUnreadClearedRef.current?.();
+            const markRes = await marcarChatComoLido(chamadoId, novaMsg.created_at);
+            if (markRes.success) {
+              onUnreadClearedRef.current?.();
+            }
           }
 
           if (isAtBottomRef.current) {
@@ -180,16 +196,41 @@ export function ChamadoChat({
           }
         }
       )
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn(`Realtime do chat ${chamadoId} desconectado. Tentando reconectar...`);
+      .subscribe((subscriptionStatus) => {
+        if (
+          subscriptionStatus === 'CHANNEL_ERROR' ||
+          subscriptionStatus === 'TIMED_OUT' ||
+          subscriptionStatus === 'CLOSED'
+        ) {
+          hasDisconnectedRef.current = true;
+        } else if (subscriptionStatus === 'SUBSCRIBED') {
+          if (hasDisconnectedRef.current) {
+            hasDisconnectedRef.current = false;
+            // Reconexão: recarrega mensagens recentes para reconciliar por ID
+            obterMensagensDoChamado(chamadoId, 50)
+              .then(res => {
+                setMensagens(prev => {
+                  const map = new Map<string, MensagemComStatus>();
+                  // Preserva todo o histórico já carregado, inclusive páginas antigas.
+                  prev.forEach(m => {
+                    map.set(m.id, m);
+                  });
+                  // Atualiza/adiciona oficiais do servidor
+                  res.mensagens.forEach(m => {
+                    map.set(m.id, { ...m, statusEnvio: 'sent' });
+                  });
+                  return ordenarMensagens(Array.from(map.values()));
+                });
+              })
+              .catch(e => console.error('Erro ao reconciliar mensagens após reconexão:', e));
+          }
         }
       });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [chamadoId, resolvedUserId, scrollToBottom]);
+  }, [chamadoId, ordenarMensagens, resolvedUserId, scrollToBottom]);
 
   // Envio de mensagem com atualização otimista
   const handleEnviar = async (texto: string) => {
@@ -207,18 +248,23 @@ export function ChamadoChat({
       statusEnvio: 'sending',
     };
 
-    setMensagens(prev => [...prev, mensagemOtimista]);
+    setMensagens(prev => ordenarMensagens([...prev, mensagemOtimista]));
     setIsSending(true);
     setTimeout(() => scrollToBottom(true), 50);
 
     try {
       const mensagemSalva = await enviarMensagemDoChamado(chamadoId, texto);
 
-      // Substitui a mensagem temporária pela mensagem oficial retornada do banco
-      setMensagens(prev =>
-        prev.map(m => (m.id === tempId ? { ...mensagemSalva, statusEnvio: 'sent' } : m))
-      );
-      onUnreadClearedRef.current?.();
+      // Remove a temporária e qualquer cópia com o ID oficial, mantendo exatamente uma oficial ordenada
+      setMensagens(prev => {
+        const filtered = prev.filter(m => m.id !== tempId && m.id !== mensagemSalva.id);
+        return ordenarMensagens([...filtered, { ...mensagemSalva, statusEnvio: 'sent' }]);
+      });
+
+      const markRes = await marcarChatComoLido(chamadoId, mensagemSalva.created_at);
+      if (markRes.success) {
+        onUnreadClearedRef.current?.();
+      }
     } catch (err) {
       console.error('Erro ao enviar mensagem:', err);
       // Marca a mensagem otimista como com erro para permitir retry
@@ -238,9 +284,15 @@ export function ChamadoChat({
 
     try {
       const mensagemSalva = await enviarMensagemDoChamado(chamadoId, texto);
-      setMensagens(prev =>
-        prev.map(m => (m.id === tempId ? { ...mensagemSalva, statusEnvio: 'sent' } : m))
-      );
+      setMensagens(prev => {
+        const filtered = prev.filter(m => m.id !== tempId && m.id !== mensagemSalva.id);
+        return ordenarMensagens([...filtered, { ...mensagemSalva, statusEnvio: 'sent' }]);
+      });
+
+      const markRes = await marcarChatComoLido(chamadoId, mensagemSalva.created_at);
+      if (markRes.success) {
+        onUnreadClearedRef.current?.();
+      }
     } catch (err) {
       console.error('Falha ao reenviar mensagem:', err);
       setMensagens(prev =>

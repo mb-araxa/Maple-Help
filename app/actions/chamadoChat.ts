@@ -153,13 +153,14 @@ export async function obterMensagensDoChamado(
     const hasMore = items.length > limit;
     const pageItems = hasMore ? items.slice(0, limit) : items;
 
-    // Inverte a ordem para retornar cronologicamente (do mais antigo para o mais recente)
-    const mensagens = pageItems.reverse();
-
-    const oldestItem = pageItems[pageItems.length - 1];
+    // Determina o cursor com a mensagem mais antiga da consulta decrescente antes de inverter
+    const oldestItem = pageItems.length > 0 ? pageItems[pageItems.length - 1] : undefined;
     const nextCursor = hasMore && oldestItem
       ? { beforeCreatedAt: oldestItem.created_at, beforeId: oldestItem.id }
       : undefined;
+
+    // Retorna uma cópia invertida para ordenação cronológica (mais antiga -> mais recente)
+    const mensagens = [...pageItems].reverse();
 
     return { mensagens, hasMore, nextCursor };
   } catch (error) {
@@ -256,7 +257,7 @@ export async function enviarMensagemDoChamado(
         .upsert({
           chamado_id: chamadoId,
           user_id: user.id,
-          last_read_at: new Date().toISOString(),
+          last_read_at: mensagemCriada.created_at || new Date().toISOString(),
         }, { onConflict: 'chamado_id,user_id' });
     } catch {
       // Falha silenciosa de leitura caso a tabela ainda não exista
@@ -296,15 +297,38 @@ export async function marcarChatComoLido(
       throw new Error('Chamado não encontrado ou sem permissão.');
     }
 
+    // Determina o timestamp seguro no servidor
+    let lastReadAt = new Date().toISOString();
+
+    if (maxMessageCreatedAt) {
+      // Não permite timestamp maior que o horário atual do servidor
+      const parsedTime = new Date(maxMessageCreatedAt).getTime();
+      const serverTime = Date.now();
+      lastReadAt = parsedTime > serverTime ? new Date(serverTime).toISOString() : maxMessageCreatedAt;
+    } else {
+      // Busca a mensagem mais recente do chamado para usar como referência confiável
+      const { data: latestMsg } = await supabase
+        .from('chamado_mensagens')
+        .select('created_at')
+        .eq('chamado_id', chamadoId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestMsg?.created_at) {
+        lastReadAt = latestMsg.created_at;
+      }
+    }
+
     const { error } = await supabase
       .from('chamado_chat_leituras')
       .upsert({
         chamado_id: chamadoId,
         user_id: user.id,
-        last_read_at: maxMessageCreatedAt || new Date().toISOString(),
+        last_read_at: lastReadAt,
       }, { onConflict: 'chamado_id,user_id' });
 
-    if (error && error.code !== '42P01') {
+    if (error) {
       throw error;
     }
 

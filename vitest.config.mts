@@ -5,11 +5,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    fileParallelism: false,
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './'),
-      'server-only': path.resolve(__dirname, './__tests__/mocks/server-only.ts'),
+      '@': path.resolve(import.meta.dirname, './'),
+      'server-only': path.resolve(import.meta.dirname, './__tests__/mocks/server-only.ts'),
     },
   },
 });

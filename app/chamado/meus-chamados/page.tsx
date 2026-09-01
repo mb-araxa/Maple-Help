@@ -50,9 +50,21 @@ export default function MeusChamadosPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregarDados();
 
-    // Assinatura única Realtime na página para atualizar badges de não lidas
+    // Assinatura única Realtime na página para atualizar badges de mensagens e status de chamados
     const channel = supabase
-      .channel('meus-chamados-badges')
+      .channel('meus-chamados-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'chamados' },
+        (payload) => {
+          const atualizado = payload.new as Chamado;
+          if (atualizado && atualizado.id) {
+            setChamados(prev =>
+              prev.map(c => (c.id === atualizado.id ? { ...c, ...atualizado } : c))
+            );
+          }
+        }
+      )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chamado_mensagens' },
@@ -79,23 +91,17 @@ export default function MeusChamadosPage() {
   }, [carregarDados]);
 
   const handleToggleChat = (chamadoId: string) => {
-    if (expandedChatId === chamadoId) {
-      setExpandedChatId(null);
-    } else {
-      setExpandedChatId(chamadoId);
-      // Limpa o contador localmente ao abrir a conversa
-      setContadoresNaoLidos(prev => ({
-        ...prev,
-        [chamadoId]: 0,
-      }));
-    }
+    setExpandedChatId(prev => (prev === chamadoId ? null : chamadoId));
   };
 
   const handleUnreadCleared = useCallback((chamadoId: string) => {
-    setContadoresNaoLidos(prev => ({
-      ...prev,
-      [chamadoId]: 0,
-    }));
+    setContadoresNaoLidos(prev => {
+      if (!prev[chamadoId]) return prev;
+      return {
+        ...prev,
+        [chamadoId]: 0,
+      };
+    });
   }, []);
 
   return (
