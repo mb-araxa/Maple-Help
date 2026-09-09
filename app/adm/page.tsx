@@ -54,21 +54,21 @@ export default function Dashboard() {
   const playNotificationSound = () => {
     try {
       if (!globalAudioCtx) return;
-      
+
       const playBeep = (startTime: number) => {
         const oscillator = globalAudioCtx!.createOscillator();
         const gainNode = globalAudioCtx!.createGain();
-        
+
         oscillator.type = 'square';
         oscillator.frequency.value = 2500;
-        
+
         gainNode.gain.setValueAtTime(0, startTime);
         gainNode.gain.linearRampToValueAtTime(0.2, startTime + 0.01);
         gainNode.gain.linearRampToValueAtTime(0.15, startTime + 0.15);
-        
+
         oscillator.connect(gainNode);
         gainNode.connect(globalAudioCtx!.destination);
-        
+
         oscillator.start(startTime);
         oscillator.stop(startTime + 0.15);
       };
@@ -99,7 +99,7 @@ export default function Dashboard() {
         await globalAudioCtx.resume();
       }
     };
-    
+
     document.addEventListener('click', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
 
@@ -154,7 +154,7 @@ export default function Dashboard() {
     try {
       await assumirChamado(id);
       await fetchChamados();
-      
+
       setChamadoSelecionado(prev => prev ? { ...prev, status: 'Em Andamento', responsavel: adminName } : null);
       addToast(`Chamado assumido por ${adminName}.`, 'success');
     } catch (error: unknown) {
@@ -243,10 +243,9 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-text tracking-tight">Painel de Administração</h1>
-          <p className="text-text-muted mt-1">Gestão de chamados de TI em tempo real.</p>
         </div>
-        
-        <Button 
+
+        <Button
           onClick={() => router.push('/adm/relatorios')}
           variant="secondary"
           className="flex items-center gap-2 shrink-0"
@@ -257,10 +256,10 @@ export default function Dashboard() {
           Ver Relatórios
         </Button>
       </div>
-      
+
       {/* Kanban Board */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
+
         {/* Coluna Pendentes */}
         <div className="flex flex-col bg-surface-muted rounded-2xl p-4 border border-border shadow-sm">
           <div className="flex items-center gap-2 mb-4 px-2">
@@ -331,7 +330,7 @@ export default function Dashboard() {
 
       {/* Modal de Detalhes com Chat */}
       {chamadoSelecionado && (
-        <ChamadoModal 
+        <ChamadoModal
           chamado={chamadoSelecionado}
           onClose={() => setChamadoSelecionado(null)}
           onAssumir={handleAssumir}
