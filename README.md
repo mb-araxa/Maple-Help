@@ -163,5 +163,4 @@ O banco de dados PostgreSQL do Supabase possui 5 tabelas principais protegidas p
 ## 📚 Documentação Complementar
 
 - 📖 [**DOCUMENTATION.md**](./DOCUMENTATION.md): Manual técnico e funcional exaustivo (regras de negócio, segurança, manutenção, diagnósticos, deploy e rollback).
-- 🧠 [**CONTEXTO_AGENTE.md**](./CONTEXTO_AGENTE.md): Guia de contexto operacional e regras estritas para desenvolvedores e agentes de IA.
 - 🗃️ [**Esquema SQL Consolidado**](./supabase/maple_help_schema.sql): Definição estrutural do banco de dados.
