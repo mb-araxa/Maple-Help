@@ -14,3 +14,12 @@ describe('Autenticação do remetente no script Gmail', () => {
     expect(autenticado('')).toBe(false);
   });
 });
+
+it('aceita Workspace sem DMARC somente com SPF e DKIM alinhados', () => {
+ const h = 'mx.google.com; dkim=pass header.i=@maplebeararaxa.com.br; spf=pass smtp.mailfrom=p@maplebeararaxa.com.br; dara=fail';
+ expect(autenticado(h)).toBe(true);
+ expect(autenticado(h.replace('dkim=pass','dkim=fail'))).toBe(false);
+ expect(autenticado(h.replace('spf=pass','spf=fail'))).toBe(false);
+ expect(autenticado(h.replaceAll('maplebeararaxa.com.br','maplebeararaxa.com.br.evil.test'))).toBe(false);
+ expect(autenticado(h + '; dmarc=fail header.from=maplebeararaxa.com.br')).toBe(false);
+});

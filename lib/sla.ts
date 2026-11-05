@@ -8,7 +8,7 @@ export const PRIORIDADE_LABEL: Record<Prioridade, string> = {
 export interface PoliticaSla { prioridade: Prioridade; prazo_horas: number | null }
 export type SituacaoSla = 'sem_sla' | 'no_prazo' | 'proximo' | 'atrasado' | 'cumprido' | 'violado';
 export const SITUACAO_SLA_LABEL: Record<SituacaoSla, string> = {
-  sem_sla: 'Sem SLA registrado', no_prazo: 'Dentro do prazo', proximo: 'Próximo do vencimento',
+  sem_sla: 'Aguardando triagem / sem SLA', no_prazo: 'Dentro do prazo', proximo: 'Próximo do vencimento',
   atrasado: 'SLA atrasado', cumprido: 'SLA cumprido', violado: 'Resolvido fora do SLA',
 };
 

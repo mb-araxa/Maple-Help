@@ -13,7 +13,7 @@ function ativarMapleHelp() {
     if (!GmailApp.getUserLabelByName(nome)) GmailApp.createLabel(nome);
   });
   if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'importarMapleHelp')) {
-    ScriptApp.newTrigger('importarMapleHelp').timeBased().everyMinutes(5).create();
+    ScriptApp.newTrigger('importarMapleHelp').timeBased().everyMinutes(1).create();
   }
 }
 
@@ -80,6 +80,13 @@ function autenticadoPeloGoogle(header) {
   // Cabeçalho ausente ou inconclusivo segue para revisão; não basta confiar no From.
   const resultado = header.replace(/\r?\n[ \t]+/g, ' ').trim();
   if (!/^mx\.google\.com\s*;/i.test(resultado)) return false;
-  return resultado.split(';').some(parte => /\bdmarc=pass\b/i.test(parte)
-    && /\bheader\.from=maplebeararaxa\.com\.br(?:\s|$)/i.test(parte));
+  const partes = resultado.split(';');
+  if (partes.some(p => /\bdmarc=(?!pass\b)\w+/i.test(p))) return false;
+  if (partes.some(p => /\bdmarc=pass\b/i.test(p)
+    && /\bheader\.from=maplebeararaxa\.com\.br(?:\s|$)/i.test(p))) return true;
+  // Workspace pode omitir DMARC: exigir DKIM e SPF alinhados, atestados pelo Google.
+  return partes.some(p => /\bdkim=pass\b/i.test(p)
+    && /\bheader\.i=@maplebeararaxa\.com\.br(?:\s|$)/i.test(p))
+    && partes.some(p => /\bspf=pass\b/i.test(p)
+      && /\bsmtp\.mailfrom=[^\s;@]+@maplebeararaxa\.com\.br(?:\s|$)/i.test(p));
 }

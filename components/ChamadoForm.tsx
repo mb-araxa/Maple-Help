@@ -6,7 +6,6 @@ import { useToast } from '@/components/ToastProvider';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { Chamado } from '@/types/database';
-import { PRIORIDADES, PRIORIDADE_LABEL, type Prioridade } from '@/lib/sla';
 
 interface ChamadoFormProps {
   categorias: string[];
@@ -23,7 +22,6 @@ export function ChamadoForm({
   const [solicitante, setSolicitante] = useState('');
   const [local, setLocal] = useState('');
   const [categoria, setCategoria] = useState('');
-  const [prioridade, setPrioridade] = useState<Prioridade>('media');
   const [descricao, setDescricao] = useState('');
   const [loading, setLoading] = useState(false);
   const [anexo, setAnexo] = useState<File | null>(null);
@@ -72,7 +70,7 @@ export function ChamadoForm({
           solicitante, 
           local, 
           categoria, 
-          prioridade,
+          prioridade: null,
           descricao, 
           anexo_url 
         });
@@ -86,7 +84,7 @@ export function ChamadoForm({
       setSolicitante('');
       setLocal('');
       setCategoria('');
-      setPrioridade('media');
+
       setDescricao('');
       setAnexo(null);
       setTouched({});
@@ -167,15 +165,7 @@ export function ChamadoForm({
         </select>
       </FormField>
 
-      <FormField 
-        label="Prioridade" htmlFor="prioridade" required
-      >
-        <select id="prioridade" value={prioridade} onChange={e => setPrioridade(e.target.value as Prioridade)}
-          className="w-full px-4 py-2 border border-border rounded-lg bg-surface text-text focus:ring-2 focus:ring-brand-500">
-          {PRIORIDADES.map(p => <option key={p} value={p}>{PRIORIDADE_LABEL[p]}</option>)}
-        </select>
-        <p className="mt-2 text-xs text-text-muted">O prazo de resolução segue o SLA definido pela equipe para esta prioridade.</p>
-      </FormField>
+      <p className="text-sm text-text-muted">A equipe definirá a prioridade e o SLA durante a triagem.</p>
 
       <FormField
         label="Descrição do Problema"
@@ -265,3 +255,4 @@ export function ChamadoForm({
     </form>
   );
 }
+

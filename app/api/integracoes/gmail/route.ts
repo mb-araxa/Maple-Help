@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
-import { emailEntradaSchema, MAX_EMAIL_REQUEST_BYTES, prioridadeDoAssunto } from '@/lib/emailEntrada';
+import { emailEntradaSchema, MAX_EMAIL_REQUEST_BYTES } from '@/lib/emailEntrada';
 
 export const runtime = 'nodejs';
 
@@ -34,12 +34,12 @@ export async function POST(request: Request) {
     return Response.json({ erro: 'Não autorizado.' }, { status: 401 });
   }
   let email;
-  let prioridade;
+
   try {
     email = emailEntradaSchema.parse(await lerCorpoLimitado(request));
-    prioridade = prioridadeDoAssunto(email.assunto);
+
   } catch {
-    return Response.json({ erro: 'E-mail inválido, prioridade ambígua ou tamanho excedido.' }, { status: 422 });
+    return Response.json({ erro: 'E-mail inválido ou tamanho excedido.' }, { status: 422 });
   }
   if (email.mailbox !== mailbox) return Response.json({ erro: 'Caixa não autorizada.' }, { status: 403 });
   const original = Buffer.from(email.originalBase64, 'base64');
@@ -65,10 +65,6 @@ export async function POST(request: Request) {
     }
     if (!userId) return Response.json({ erro: 'Remetente precisa de cadastro institucional confirmado no Maple Help.' }, { status: 422 });
 
-    const { data: politica, error: erroPolitica } = await supabase.from('sla_politicas')
-      .select('prazo_horas').eq('prioridade', prioridade).single();
-    if (erroPolitica || !politica?.prazo_horas) return Response.json({ erro: 'Configure o SLA da prioridade antes de importar.' }, { status: 503 });
-
     const { error: erroUpload } = await supabase.storage.from('chamados-emails').upload(caminho, original,
       { contentType: 'application/octet-stream', upsert: false });
     // Arquivo determinístico permite retentar uma falha posterior ao upload sem duplicá-lo.
@@ -78,7 +74,7 @@ export async function POST(request: Request) {
       local: 'Não informado no formulário — recebido por e-mail',
       categoria: 'E-mail / Triagem',
       descricao: `Assunto: ${email.assunto || '(sem assunto)'}\nDe: ${email.remetente}\nData do e-mail: ${email.dataEmail}\n\n${email.texto || '(sem texto; consulte o e-mail original)'}`,
-      status: 'Pendente', user_id: userId, prioridade, origem: 'email',
+      status: 'Pendente', user_id: userId, prioridade: null, data_criacao: email.dataEmail, origem: 'email',
       email_remetente: email.remetente, email_assunto: email.assunto,
       email_message_id: messageId, email_original_path: caminho,
     }).select('id').single();

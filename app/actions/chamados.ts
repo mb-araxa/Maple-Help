@@ -201,7 +201,7 @@ export async function checkIsAdmin(): Promise<boolean> {
 }
 
 const abrirChamadoSchema = z.object({
-  prioridade: z.enum(PRIORIDADES).default('media'),
+  prioridade: z.enum(PRIORIDADES).nullable().optional(),
   solicitante: z.string().min(1, 'Solicitante é obrigatório.').max(100),
   local: z.string().min(1, 'Local é obrigatório.').max(150),
   categoria: z.string().min(1, 'Categoria é obrigatória.').max(50),
@@ -252,7 +252,7 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
     }
 
     const payload = {
-      prioridade: dadosValidados.prioridade,
+      prioridade: null,
       solicitante: dadosValidados.solicitante,
       local: dadosValidados.local,
       categoria: dadosValidados.categoria,

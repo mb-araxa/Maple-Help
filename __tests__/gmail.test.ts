@@ -21,7 +21,7 @@ beforeEach(() => {
   insert.mockReturnValue(chain); from.mockReturnValue(chain);
   createClient.mockReturnValue({ from, auth: { admin: { listUsers } }, storage: { from: () => ({ upload }) } });
   maybeSingle.mockResolvedValue({ data: null, error: null });
-  single.mockResolvedValueOnce({ data: { prazo_horas: 4 }, error: null }).mockResolvedValueOnce({ data: { id: 'ticket-1' }, error: null });
+  single.mockResolvedValueOnce({ data: { id: 'ticket-1' }, error: null });
   listUsers.mockResolvedValue({ data: { users: [{ id: 'user-1', email: dados.remetente, email_confirmed_at: '2026-01-01' }] }, error: null });
   upload.mockResolvedValue({ error: null });
 });
@@ -41,28 +41,24 @@ describe('Entrada Gmail', () => {
     expect(await (await POST(request())).json()).toEqual({ id: 'anterior', duplicado: true });
     expect(upload).not.toHaveBeenCalled(); expect(insert).not.toHaveBeenCalled();
   });
-  it('preserva mensagem, vincula o usuário e aplica prioridade do assunto sem aceitar prazo externo', async () => {
+  it('preserva mensagem, vincula o usuário e aguarda classificação manual sem aceitar prazo externo', async () => {
     expect((await POST(request())).status).toBe(201);
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ prioridade: 'alta', user_id: 'user-1', origem: 'email', email_message_id: 'help@gmail.com:abc123' }));
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ prioridade: null, user_id: 'user-1', origem: 'email', email_message_id: 'help@gmail.com:abc123' }));
     expect(insert.mock.calls[0][0]).not.toHaveProperty('sla_vence_em');
     expect(upload).toHaveBeenCalledWith(expect.stringMatching(/\.eml$/), Buffer.from('abc'), expect.objectContaining({ upsert: false }));
   });
-  it('mantém na fila remetentes desconhecidos e SLA não configurado', async () => {
+  it('mantém na fila remetentes desconhecidos', async () => {
     listUsers.mockResolvedValueOnce({ data: { users: [] }, error: null });
     expect((await POST(request())).status).toBe(422);
     expect(insert).not.toHaveBeenCalled();
-    single.mockReset().mockResolvedValue({ data: { prazo_horas: null }, error: null });
-    expect((await POST(request())).status).toBe(503);
-    expect(upload).not.toHaveBeenCalled();
+
   });
-  it('recusa outra caixa ou assunto ambíguo', async () => {
+  it('recusa outra caixa mas aceita qualquer assunto', async () => {
     expect((await POST(request({ ...dados, mailbox: 'outra@gmail.com' }))).status).toBe(403);
-    expect((await POST(request({ ...dados, assunto: '[BAIXA] [ALTA]' }))).status).toBe(422);
-    expect(insert).not.toHaveBeenCalled();
+    expect((await POST(request({ ...dados, assunto: '[BAIXA] [ALTA]' }))).status).toBe(201);
   });
   it('trata conflito de inserções simultâneas como reenvio', async () => {
-    single.mockReset().mockResolvedValueOnce({ data: { prazo_horas: 4 } })
-      .mockResolvedValueOnce({ error: { code: '23505' } }).mockResolvedValueOnce({ data: { id: 'concorrente' } });
+    single.mockReset().mockResolvedValueOnce({ error: { code: '23505' } }).mockResolvedValueOnce({ data: { id: 'concorrente' } });
     expect(await (await POST(request())).json()).toEqual({ id: 'concorrente', duplicado: true });
   });
 });
