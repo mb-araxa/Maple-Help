@@ -1,6 +1,7 @@
 'use server';
 
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies, headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -9,6 +10,7 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { Chamado } from '@/types/database';
 import { enviarEmailDeAtualizacao } from '@/lib/chamadoEmail';
+import { PRIORIDADES, type PoliticaSla, type Prioridade } from '@/lib/sla';
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -199,6 +201,7 @@ export async function checkIsAdmin(): Promise<boolean> {
 }
 
 const abrirChamadoSchema = z.object({
+  prioridade: z.enum(PRIORIDADES).default('media'),
   solicitante: z.string().min(1, 'Solicitante é obrigatório.').max(100),
   local: z.string().min(1, 'Local é obrigatório.').max(150),
   categoria: z.string().min(1, 'Categoria é obrigatória.').max(50),
@@ -249,6 +252,7 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
     }
 
     const payload = {
+      prioridade: dadosValidados.prioridade,
       solicitante: dadosValidados.solicitante,
       local: dadosValidados.local,
       categoria: dadosValidados.categoria,
@@ -265,6 +269,7 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
       .single();
 
     if (error) {
+      if (error.code === 'P0001' && error.message.includes('SLA')) throw new Error(error.message);
       throw error;
     }
 
@@ -274,6 +279,57 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
     const message = error instanceof Error ? error.message : 'Erro ao abrir chamado';
     throw new Error(message);
   }
+}
+
+export async function obterPoliticasSla(): Promise<PoliticaSla[]> {
+  await requireAdmin();
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('sla_politicas').select('prioridade, prazo_horas');
+  if (error) throw new Error('Não foi possível carregar os prazos. Verifique a migração de SLA.');
+  return data as PoliticaSla[];
+}
+
+export async function salvarPoliticasSla(politicas: PoliticaSla[]) {
+  await requireAdmin();
+  const dados = z.array(z.object({
+    prioridade: z.enum(PRIORIDADES),
+    prazo_horas: z.number().min(0.25).max(8760).multipleOf(0.25),
+  })).length(4).parse(politicas);
+  if (new Set(dados.map(p => p.prioridade)).size !== 4) throw new Error('Informe as quatro prioridades.');
+  const supabase = await getSupabase();
+  const { error } = await supabase.from('sla_politicas').upsert(dados, { onConflict: 'prioridade' });
+  if (error) throw new Error('Não foi possível salvar os prazos de SLA.');
+  revalidatePath('/adm/sla');
+}
+
+export async function alterarPrioridadeChamado(id: string, prioridade: Prioridade) {
+  await requireAdmin();
+  z.string().uuid().parse(id);
+  z.enum(PRIORIDADES).parse(prioridade);
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('chamados').update({ prioridade })
+    .eq('id', id).neq('status', 'Concluído').select().maybeSingle();
+  if (error) throw new Error('Não foi possível alterar a prioridade. Verifique se o prazo está configurado.');
+  if (!data) throw new Error('Chamado não encontrado ou já concluído.');
+  revalidatePath('/adm');
+  return data as Chamado;
+}
+
+export async function obterEmailOriginal(id: string) {
+  z.string().uuid().parse(id);
+  const supabase = await getSupabase();
+  const { data: usuario, error: erroUsuario } = await supabase.auth.getUser();
+  if (erroUsuario || !usuario.user) throw new Error('Usuário não autenticado.');
+  // A consulta usa a sessão/RLS, antes de qualquer acesso privilegiado ao Storage.
+  const { data, error } = await supabase.from('chamados').select('email_original_path').eq('id', id).single();
+  if (error || !data?.email_original_path) throw new Error('E-mail não encontrado ou sem permissão.');
+  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!chave) throw new Error('Download de e-mail não configurado.');
+  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, chave, { auth: { persistSession: false } });
+  const { data: arquivo, error: erroArquivo } = await admin.storage.from('chamados-emails')
+    .createSignedUrl(data.email_original_path, 60, { download: `chamado-${id}.eml` });
+  if (erroArquivo) throw new Error('Não foi possível baixar o e-mail original.');
+  return arquivo.signedUrl;
 }
 
 /**
@@ -383,30 +439,7 @@ export async function obterChamadosConcluidos(mes: number, ano: number, page: nu
  * Útil para exportação Excel e cálculo de métricas.
  */
 export async function obterTodosChamadosConcluidos(mes: number, ano: number) {
-  try {
-    await requireAdmin();
-    const supabase = await getSupabase();
-    const dataInicio = new Date(ano, mes - 1, 1).toISOString();
-    const dataFim = new Date(ano, mes, 1).toISOString();
-
-    const { data, error } = await supabase
-      .from('chamados')
-      .select('*')
-      .eq('status', 'Concluído')
-      .gte('data_resolucao', dataInicio)
-      .lt('data_resolucao', dataFim)
-      .order('data_resolucao', { ascending: false });
-
-    if (error) {
-      throw error;
-    }
-
-    return data as Chamado[];
-  } catch (error) {
-    console.error('Erro em obterTodosChamadosConcluidos:', error);
-    const message = error instanceof Error ? error.message : 'Erro ao carregar dados';
-    throw new Error(`Não foi possível carregar os dados para exportação: ${message}`);
-  }
+  return obterRelatorioCompleto(mes, ano);
 }
 
 const uuidSchema = z.string().uuid('ID inválido.');
@@ -440,6 +473,7 @@ export async function obterRelatorioCompleto(mes: number, ano: number) {
         .gte('data_resolucao', dataInicio)
         .lt('data_resolucao', dataFim)
         .order('data_resolucao', { ascending: false })
+        .order('id', { ascending: true })
         .range(from, from + pageSize - 1);
 
       if (error) throw error;

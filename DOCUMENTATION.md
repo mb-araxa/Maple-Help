@@ -2,6 +2,10 @@
 
 Este documento é a referência técnica e funcional completa para o desenvolvimento, manutenção, infraestrutura e operação do **Maple Help**.
 
+## Atualização: SLA e entrada Gmail (outubro/2026)
+
+Consulte [SLA e Gmail](docs/SLA_E_GMAIL.md) para as regras vigentes, migração incremental, variáveis, limites e roteiro de ativação. O SLA é de resolução, por prioridade, em horas corridas. A migração cadastra os prazos aprovados: baixa 168h (1 semana), média 120h (5 dias), alta 72h (3 dias) e crítica 24h (1 dia). O código local não configura automaticamente o banco publicado nem autoriza a conta Gmail. Esta seção complementa o manual abaixo.
+
 ---
 
 ## 1. Visão Geral

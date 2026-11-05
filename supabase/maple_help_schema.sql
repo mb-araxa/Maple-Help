@@ -1,3 +1,5 @@
+-- Esquema base. Em instalação nova, aplicar depois migrations/20261014175746_sla_email.sql.
+-- Em banco existente, aplicar somente as migrações pendentes.
 begin;
 
 -- 1. Fonte única de administradores: public.app_admins

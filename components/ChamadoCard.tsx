@@ -1,4 +1,5 @@
 import { Chamado } from '@/types/database';
+import { SlaBadge } from '@/components/SlaBadge';
 import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { IndicadorNaoLidas } from '@/components/chamado-chat/IndicadorNaoLidas';
@@ -48,6 +49,7 @@ export function ChamadoCard({ chamado, onClick, unreadCount = 0 }: ChamadoCardPr
         </span>
       </div>
 
+      <SlaBadge chamado={chamado} />
       <div className="mt-1">
         <p className="text-sm text-text-muted line-clamp-2 leading-relaxed">
           {chamado.descricao}

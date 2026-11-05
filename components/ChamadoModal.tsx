@@ -9,6 +9,9 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { FormField } from '@/components/ui/FormField';
 import { ChamadoChat } from '@/components/chamado-chat/ChamadoChat';
 import { IndicadorNaoLidas } from '@/components/chamado-chat/IndicadorNaoLidas';
+import { SlaBadge } from '@/components/SlaBadge';
+import { EmailOriginal } from '@/components/EmailOriginal';
+import { PRIORIDADES, PRIORIDADE_LABEL, type Prioridade } from '@/lib/sla';
 
 interface ChamadoModalProps {
   chamado: Chamado;
@@ -16,6 +19,7 @@ interface ChamadoModalProps {
   onAssumir: (id: string) => Promise<void>;
   onConcluir: (id: string, resolucao: string, tempo_gasto: string) => Promise<void>;
   onDelete?: (id: string) => void;
+  onPrioridade?: (id: string, prioridade: Prioridade) => Promise<void>;
   unreadCount?: number;
   onUnreadCleared?: () => void;
 }
@@ -26,6 +30,7 @@ export function ChamadoModal({
   onAssumir,
   onConcluir,
   onDelete,
+  onPrioridade,
   unreadCount = 0,
   onUnreadCleared,
 }: ChamadoModalProps) {
@@ -183,6 +188,24 @@ export function ChamadoModal({
             </div>
           ) : (
             <div className="p-6 overflow-y-auto flex-1">
+              <div className="mb-6 space-y-3">
+                <SlaBadge chamado={chamado} />
+                {onPrioridade && chamado.status !== 'Concluído' && <div>
+                  <label htmlFor="prioridade-chamado" className="block text-sm font-semibold mb-1">Prioridade do chamado</label>
+                  <select id="prioridade-chamado" value={chamado.prioridade || ''} disabled={loading}
+                    onChange={async e => {
+                      setLoading(true);
+                      try { await onPrioridade(chamado.id, e.target.value as Prioridade); }
+                      finally { setLoading(false); }
+                    }} className="border border-border rounded-lg bg-surface p-2 text-text focus:ring-2 focus:ring-brand-500">
+                    <option value="" disabled>Selecione</option>
+                    {PRIORIDADES.map(p => <option key={p} value={p}>{PRIORIDADE_LABEL[p]}</option>)}
+                  </select>
+                  <p className="text-xs text-text-muted mt-1">Ao alterar, o prazo da nova prioridade conta desde a abertura original.</p>
+                </div>}
+                {chamado.email_remetente && <p className="text-sm text-text-muted">E-mail de origem: {chamado.email_remetente}</p>}
+                <EmailOriginal chamado={chamado} />
+              </div>
               <div className="grid grid-cols-2 gap-6 mb-6">
                 <div>
                   <p className="text-xs text-text-subtle font-semibold uppercase tracking-wider mb-1">Solicitante</p>

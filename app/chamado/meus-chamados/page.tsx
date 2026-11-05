@@ -9,6 +9,8 @@ import { useToast } from '@/components/ToastProvider';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { Chamado, ContadoresNaoLidos } from '@/types/database';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { SlaBadge } from '@/components/SlaBadge';
+import { EmailOriginal } from '@/components/EmailOriginal';
 import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import { Button } from '@/components/ui/Button';
 import { AvaliacaoChamado } from '@/components/AvaliacaoChamado';
@@ -185,7 +187,9 @@ export default function MeusChamadosPage() {
                   </div>
                   
                   <div className="bg-surface-muted p-4 rounded-xl border border-border mb-4">
+                    <div className="mb-3"><SlaBadge chamado={chamado} /></div>
                     <p className="text-text text-sm whitespace-pre-wrap">{chamado.descricao}</p>
+                    <EmailOriginal chamado={chamado} />
                   </div>
 
                   {chamado.status === 'Concluído' && chamado.resolucao && (

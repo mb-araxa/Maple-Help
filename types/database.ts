@@ -20,6 +20,14 @@ export interface Chamado {
   anexo_url?: string | null; // URL pública ou assinada da imagem no storage
   user_id?: string; // ID do usuário que abriu o chamado (Supabase Auth)
   avaliacao?: AvaliacaoChamado | null;
+  prioridade?: import('@/lib/sla').Prioridade | null;
+  sla_prazo_horas?: number | null;
+  sla_vence_em?: string | null;
+  origem?: 'portal' | 'email';
+  email_remetente?: string | null;
+  email_assunto?: string | null;
+  email_message_id?: string | null;
+  email_original_path?: string | null;
 }
 
 export type AutorTipo = 'usuario' | 'ti';

@@ -12,6 +12,7 @@ import {
   assumirChamado,
   finalizarChamado,
   deletarChamado,
+  alterarPrioridadeChamado,
 } from '@/app/actions/chamados';
 import { obterContadoresNaoLidos } from '@/app/actions/chamadoChat';
 import { Chamado, ContadoresNaoLidos } from '@/types/database';
@@ -245,6 +246,8 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-text tracking-tight">Painel de Administração</h1>
         </div>
 
+        <div className="flex flex-wrap gap-2">
+        <Button onClick={() => router.push('/adm/sla')} variant="secondary">Configurar SLA</Button>
         <Button
           onClick={() => router.push('/adm/relatorios')}
           variant="secondary"
@@ -255,6 +258,7 @@ export default function Dashboard() {
           </svg>
           Ver Relatórios
         </Button>
+        </div>
       </div>
 
       {/* Kanban Board */}
@@ -336,6 +340,14 @@ export default function Dashboard() {
           onAssumir={handleAssumir}
           onConcluir={handleConcluir}
           onDelete={handleDelete}
+          onPrioridade={async (id, prioridade) => {
+            try {
+              const atualizado = await alterarPrioridadeChamado(id, prioridade);
+              setChamadoSelecionado(atualizado);
+              await fetchChamados();
+              addToast('Prioridade e prazo atualizados.', 'success');
+            } catch (e) { addToast(e instanceof Error ? e.message : 'Erro ao alterar prioridade.', 'error'); }
+          }}
           unreadCount={contadoresNaoLidos[chamadoSelecionado.id] || 0}
           onUnreadCleared={() => handleUnreadCleared(chamadoSelecionado.id)}
         />

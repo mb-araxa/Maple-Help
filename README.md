@@ -2,6 +2,10 @@
 
 Sistema interno de help desk da **Maple Bear Araxá** para abertura, acompanhamento, comunicação em tempo real e gestão de chamados de suporte de TI.
 
+### SLA e Gmail — implementação de outubro/2026
+
+O código inclui prioridades baixa/média/alta/crítica, prazos de resolução configuráveis em horas corridas, indicadores nos chamados e SLA nos relatórios/Excel. Prazos iniciais aprovados: **baixa 168h (1 semana), média 120h (5 dias), alta 72h (3 dias) e crítica 24h (1 dia)**, já cadastrados pela migração. A integração Gmail via Apps Script classifica pelo marcador do assunto e preserva o e-mail original com anexos. **A ativação exige migração, publicação e autorização da conta Gmail.** Consulte [regras, limites e roteiro de ativação](docs/SLA_E_GMAIL.md). Em instalação nova, aplique a migração `20261014175746_sla_email.sql` após o esquema base.
+
 ---
 
 ## 📌 Estado Atual do Projeto

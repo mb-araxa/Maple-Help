@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 export async function proxy(request: NextRequest) {
+  // Autenticação própria por segredo de servidor; não depende de cookies do navegador.
+  if (request.nextUrl.pathname === '/api/integracoes/gmail') return NextResponse.next();
   let supabaseResponse = NextResponse.next({
     request,
   });

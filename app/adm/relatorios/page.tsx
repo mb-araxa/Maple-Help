@@ -11,6 +11,8 @@ import { saveAs } from 'file-saver';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import { Button } from '@/components/ui/Button';
+import { SlaBadge } from '@/components/SlaBadge';
+import { PRIORIDADE_LABEL, SITUACAO_SLA_LABEL, resumirSla, situacaoSla } from '@/lib/sla';
 import {
   contarCategoriasParaGrafico,
   contarChamadosPorDiaUtil,
@@ -36,6 +38,7 @@ export default function RelatoriosPage() {
   const [totalChamados, setTotalChamados] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [exporting, setExporting] = useState<boolean>(false);
+  const [metricasSlaStatus, setMetricasSlaStatus] = useState<'carregando' | 'ok' | 'erro'>('carregando');
   
   // Estado de paginação
   const [page, setPage] = useState<number>(1);
@@ -73,22 +76,30 @@ export default function RelatoriosPage() {
 
   // Buscar todos os dados para métricas sempre que mudar mês/ano
   useEffect(() => {
+    let ativo = true;
     async function fetchTodos() {
+      setMetricasSlaStatus('carregando');
       try {
-        const dados = await obterTodosChamadosConcluidos(mes, ano);
+        const [dados, stats] = await Promise.all([
+          obterTodosChamadosConcluidos(mes, ano), obterEstatisticasMensais(mes, ano),
+        ]);
+        if (!ativo) return;
         setTodosChamados(dados);
-        const stats = await obterEstatisticasMensais(mes, ano);
         setEstatisticasMensais(stats);
+        setMetricasSlaStatus('ok');
       } catch (error) {
+        if (ativo) setMetricasSlaStatus('erro');
         console.error("Erro ao buscar dados para métricas", error);
       }
     }
     fetchTodos();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1); // Reseta a página para 1 quando muda a data
+    return () => { ativo = false; };
   }, [mes, ano]);
   
   const totalPages = Math.ceil(totalChamados / limit) || 1;
+  const resumoSla = resumirSla(todosChamados);
 
   // Encontrar a categoria mais solicitada entre os chamados abertos no mês.
   const categoriasContagem = estatisticasMensais.reduce((acc, c) => {
@@ -265,6 +276,11 @@ export default function RelatoriosPage() {
         { header: 'Tempo Gasto', key: 'tempo_gasto', width: 16 },
         { header: 'Anexo', key: 'anexo_url', width: 42 },
         { header: 'ID do Usu\u00e1rio', key: 'user_id', width: 38 },
+        { header: 'Prioridade', key: 'prioridade', width: 16 },
+        { header: 'SLA (horas corridas)', key: 'sla_prazo_horas', width: 24 },
+        { header: 'Vencimento do SLA', key: 'sla_vence_em', width: 23 },
+        { header: 'Resultado do SLA', key: 'sla_resultado', width: 30 },
+        { header: 'Origem', key: 'origem', width: 16 },
       ];
 
       sheetDados.insertRows(1, [
@@ -273,7 +289,7 @@ export default function RelatoriosPage() {
         ['Gerado em', new Date()],
         [],
       ]);
-      sheetDados.mergeCells('A1:M1');
+      sheetDados.mergeCells('A1:R1');
       sheetDados.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FFFFFFFF' } };
       sheetDados.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE31837' } };
       sheetDados.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
@@ -283,7 +299,7 @@ export default function RelatoriosPage() {
       sheetDados.getRow(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF27272A' } };
       sheetDados.getRow(5).alignment = { vertical: 'middle' };
       sheetDados.getRow(5).height = 28;
-      sheetDados.autoFilter = { from: 'A5', to: 'M5' };
+      sheetDados.autoFilter = { from: 'A5', to: 'R5' };
 
       dadosExportacao.forEach(chamado => {
         const row = sheetDados.addRow({
@@ -300,6 +316,11 @@ export default function RelatoriosPage() {
           tempo_gasto: chamado.tempo_gasto || 'N\u00e3o informado',
           anexo_url: chamado.anexo_url || '',
           user_id: chamado.user_id || '',
+          prioridade: chamado.prioridade ? PRIORIDADE_LABEL[chamado.prioridade] : 'Não registrada',
+          sla_prazo_horas: chamado.sla_prazo_horas ?? null,
+          sla_vence_em: chamado.sla_vence_em ? new Date(chamado.sla_vence_em) : null,
+          sla_resultado: SITUACAO_SLA_LABEL[situacaoSla(chamado)],
+          origem: chamado.origem === 'email' ? 'E-mail' : 'Portal',
         });
         row.alignment = { vertical: 'top' };
       });
@@ -308,6 +329,18 @@ export default function RelatoriosPage() {
       sheetDados.getColumn('resolucao').alignment = { wrapText: true, vertical: 'top' };
       sheetDados.getColumn('data_criacao').numFmt = 'dd/mm/yyyy hh:mm';
       sheetDados.getColumn('data_resolucao').numFmt = 'dd/mm/yyyy hh:mm';
+      sheetDados.getColumn('sla_vence_em').numFmt = 'dd/mm/yyyy hh:mm';
+
+      const resumoExportacao = resumirSla(dadosExportacao);
+      const sheetSla = workbook.addWorksheet('SLA');
+      sheetSla.columns = [{ header: 'Indicador — concluídos no período', key: 'indicador', width: 44 }, { header: 'Valor', key: 'valor', width: 24 }];
+      sheetSla.addRows([
+        { indicador: 'SLA cumprido', valor: resumoExportacao.cumpridos },
+        { indicador: 'Resolvidos fora do SLA', valor: resumoExportacao.violados },
+        { indicador: 'Sem SLA registrado (excluídos do percentual)', valor: resumoExportacao.semSla },
+        { indicador: 'Cumprimento do SLA (%)', valor: resumoExportacao.percentual ?? 'Sem dados' },
+      ]);
+      sheetSla.getRow(1).font = { bold: true };
 
       sheetDados.eachRow((row, rowNumber) => {
         if (rowNumber > 5) {
@@ -458,6 +491,24 @@ export default function RelatoriosPage() {
       </div>
 
       {/* Tabela de Dados */}
+      <SurfaceCard className="p-6 space-y-4">
+        <h2 className="text-lg font-bold text-text">SLA dos chamados concluídos no período</h2>
+        {metricasSlaStatus === 'carregando' ? <p role="status">Carregando indicadores de SLA...</p>
+          : metricasSlaStatus === 'erro' ? <p role="alert" className="text-red-800">Não foi possível carregar os indicadores de SLA. Recarregue a página para tentar novamente.</p>
+          : <>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            ['Cumprimento do SLA', resumoSla.percentual === null ? '—' : `${resumoSla.percentual.toFixed(1)}%`],
+            ['Dentro do prazo', resumoSla.cumpridos],
+            ['Fora do prazo', resumoSla.violados],
+            ['Sem SLA registrado', resumoSla.semSla],
+          ].map(([label, valor]) => <div key={label}>
+            <p className="text-sm text-text-muted">{label}</p><p className="text-2xl font-bold text-text">{valor}</p>
+          </div>)}
+        </div>
+        <p className="text-xs text-text-muted">Chamados sem prazo registrado não entram no percentual. A apuração considera a data de resolução e o prazo preservado no chamado.</p>
+        </>}
+      </SurfaceCard>
       <SurfaceCard className="overflow-hidden">
         {loading ? (
           <div className="p-12 flex justify-center items-center">
@@ -477,6 +528,7 @@ export default function RelatoriosPage() {
                   <th className="px-6 py-4">Solicitante</th>
                   <th className="px-6 py-4">Categoria / Local</th>
                   <th className="px-6 py-4">Tempo Gasto</th>
+                  <th className="px-6 py-4 min-w-[240px]">Prioridade / SLA</th>
                   <th className="px-6 py-4 min-w-[200px]">Resolução</th>
                 </tr>
               </thead>
@@ -503,6 +555,9 @@ export default function RelatoriosPage() {
                         </svg>
                         {c.tempo_gasto || '-'}
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <SlaBadge chamado={c} />
                     </td>
                     <td className="px-6 py-4">
                       <div className="bg-status-completed-bg text-status-completed-text p-3 rounded-lg text-xs border border-status-completed-text/10 leading-relaxed">
