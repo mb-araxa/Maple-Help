@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ToastProvider';
@@ -20,6 +20,14 @@ export default function LoginPage() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('senhaAtualizada') === '1') {
+      addToast('Senha atualizada com sucesso. Entre com sua nova senha.', 'success');
+      window.history.replaceState({}, '', '/');
+    }
+  }, [addToast]);
 
   const handleAuthModeChange = () => {
     clearToasts();
@@ -85,7 +93,7 @@ export default function LoginPage() {
 
     setResetLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: `${window.location.origin}/`,
+      redirectTo: `${window.location.origin}/recuperar-senha`,
     });
 
     if (error) {
