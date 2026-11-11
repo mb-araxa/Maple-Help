@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { emailEntradaSchema, MAX_EMAIL_REQUEST_BYTES } from '@/lib/emailEntrada';
+import { analisarChamadoComIa, type SupabaseIaClient } from '@/lib/iaChamados';
 
 export const runtime = 'nodejs';
 
@@ -85,6 +86,13 @@ export async function POST(request: Request) {
       return Response.json({ id: repetido.id, duplicado: true });
     }
     if (error) throw error;
+
+    try {
+      await analisarChamadoComIa(chamado.id, supabase as unknown as SupabaseIaClient);
+    } catch {
+      // Falha na IA não impede a criação do chamado nem provoca reenvio pelo Gmail
+    }
+
     return Response.json({ id: chamado.id }, { status: 201 });
   } catch {
     // Não registrar conteúdo, endereços ou credenciais em logs do servidor.

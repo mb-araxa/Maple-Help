@@ -5,6 +5,35 @@ export interface AvaliacaoChamado {
   created_at: string;
 }
 
+export type StatusAnaliseIa =
+  | 'pendente'
+  | 'processando'
+  | 'concluida'
+  | 'falha';
+
+export type OrigemPrioridade =
+  | 'padrao'
+  | 'ia'
+  | 'manual';
+
+export interface AnaliseIaChamado {
+  chamado_id: string;
+  ia_status: StatusAnaliseIa;
+  ia_prioridade_sugerida: import('@/lib/sla').Prioridade | null;
+  ia_justificativa: string | null;
+  ia_sugestao_atendimento: string | null;
+  ia_confianca: number | null;
+  ia_modelo: string | null;
+  ia_analisado_em: string | null;
+  ia_execucao_id: string | null;
+  ia_iniciada_em: string | null;
+  ia_trava_ate: string | null;
+}
+
+/**
+ * Representação pública do chamado exposta ao solicitante no portal.
+ * Não inclui dados internos de triagem/auditoria da IA nem controle de trava.
+ */
 export interface Chamado {
   id: string; // uuid
   solicitante: string;
@@ -28,6 +57,24 @@ export interface Chamado {
   email_assunto?: string | null;
   email_message_id?: string | null;
   email_original_path?: string | null;
+}
+
+/**
+ * Representação administrativa do chamado enriquecida com os dados internos da análise de IA.
+ * Restrita exclusivamente às rotas e componentes da equipe de TI (/adm).
+ */
+export interface ChamadoAdmin extends Chamado {
+  prioridade_origem?: OrigemPrioridade | null;
+  ia_sugestao_atendimento?: string | null;
+  ia_prioridade_sugerida?: import('@/lib/sla').Prioridade | null;
+  ia_justificativa?: string | null;
+  ia_confianca?: number | null;
+  ia_modelo?: string | null;
+  ia_status?: StatusAnaliseIa | null;
+  ia_analisado_em?: string | null;
+  ia_execucao_id?: string | null;
+  ia_iniciada_em?: string | null;
+  ia_trava_ate?: string | null;
 }
 
 export type AutorTipo = 'usuario' | 'ti';

@@ -1,16 +1,19 @@
-import { Chamado } from '@/types/database';
+import { ChamadoAdmin } from '@/types/database';
 import { SlaBadge } from '@/components/SlaBadge';
 import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { IndicadorNaoLidas } from '@/components/chamado-chat/IndicadorNaoLidas';
+import { isTravaIaAtiva, isTravaIaExpirada } from '@/components/SugestaoIaChamado';
 
 interface ChamadoCardProps {
-  chamado: Chamado;
+  chamado: ChamadoAdmin;
   onClick: () => void;
   unreadCount?: number;
 }
 
 export function ChamadoCard({ chamado, onClick, unreadCount = 0 }: ChamadoCardProps) {
+  const travaAtiva = isTravaIaAtiva(chamado.ia_status, chamado.ia_trava_ate);
+  const travaExpirada = isTravaIaExpirada(chamado.ia_status, chamado.ia_trava_ate);
   return (
     <SurfaceCard 
       onClick={onClick}
@@ -47,6 +50,25 @@ export function ChamadoCard({ chamado, onClick, unreadCount = 0 }: ChamadoCardPr
         <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-surface-muted text-text border border-border">
           {chamado.categoria}
         </span>
+        {chamado.status !== 'Concluído' && (
+          <span
+            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+              chamado.ia_status === 'concluida'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : chamado.ia_status === 'falha' || travaExpirada
+                ? 'bg-red-50 text-red-800 border-red-200'
+                : 'bg-surface-muted text-text-muted border-border'
+            }`}
+          >
+            {chamado.ia_status === 'concluida'
+              ? 'IA analisada'
+              : chamado.ia_status === 'falha' || travaExpirada
+              ? 'IA falhou'
+              : travaAtiva
+              ? 'IA analisando'
+              : 'IA pendente'}
+          </span>
+        )}
       </div>
 
       <SlaBadge chamado={chamado} />

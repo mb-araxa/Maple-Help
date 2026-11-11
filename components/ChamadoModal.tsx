@@ -1,6 +1,6 @@
 'use client';
 
-import { Chamado } from '@/types/database';
+import { ChamadoAdmin } from '@/types/database';
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { ConfirmModal } from './ConfirmModal';
@@ -11,15 +11,18 @@ import { ChamadoChat } from '@/components/chamado-chat/ChamadoChat';
 import { IndicadorNaoLidas } from '@/components/chamado-chat/IndicadorNaoLidas';
 import { SlaBadge } from '@/components/SlaBadge';
 import { EmailOriginal } from '@/components/EmailOriginal';
+import { SugestaoIaChamado } from '@/components/SugestaoIaChamado';
 import { PRIORIDADES, PRIORIDADE_LABEL, type Prioridade } from '@/lib/sla';
 
 interface ChamadoModalProps {
-  chamado: Chamado;
+  chamado: ChamadoAdmin;
   onClose: () => void;
   onAssumir: (id: string) => Promise<void>;
   onConcluir: (id: string, resolucao: string, tempo_gasto: string) => Promise<void>;
   onDelete?: (id: string) => void;
   onPrioridade?: (id: string, prioridade: Prioridade) => Promise<void>;
+  onGerarSugestaoIa?: (id: string) => Promise<ChamadoAdmin | void>;
+  onChamadoAtualizado?: (chamado: ChamadoAdmin) => void;
   unreadCount?: number;
   onUnreadCleared?: () => void;
 }
@@ -31,6 +34,8 @@ export function ChamadoModal({
   onConcluir,
   onDelete,
   onPrioridade,
+  onGerarSugestaoIa,
+  onChamadoAtualizado,
   unreadCount = 0,
   onUnreadCleared,
 }: ChamadoModalProps) {
@@ -205,6 +210,13 @@ export function ChamadoModal({
                 </div>}
                 {chamado.email_remetente && <p className="text-sm text-text-muted">E-mail de origem: {chamado.email_remetente}</p>}
                 <EmailOriginal chamado={chamado} />
+                {chamado.status !== 'Concluído' && (
+                  <SugestaoIaChamado
+                    chamado={chamado}
+                    onGerarSugestao={onGerarSugestaoIa}
+                    onChamadoAtualizado={onChamadoAtualizado}
+                  />
+                )}
               </div>
               <div className="grid grid-cols-2 gap-6 mb-6">
                 <div>

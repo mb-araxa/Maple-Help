@@ -13,9 +13,10 @@ import {
   finalizarChamado,
   deletarChamado,
   alterarPrioridadeChamado,
+  gerarSugestaoIaChamado,
 } from '@/app/actions/chamados';
 import { obterContadoresNaoLidos } from '@/app/actions/chamadoChat';
-import { Chamado, ContadoresNaoLidos } from '@/types/database';
+import { ChamadoAdmin, ContadoresNaoLidos } from '@/types/database';
 import { ChamadoCard } from '@/components/ChamadoCard';
 import { ChamadoModal } from '@/components/ChamadoModal';
 import { Button } from '@/components/ui/Button';
@@ -27,11 +28,11 @@ export default function Dashboard() {
   usePageTitle('Painel ADM');
   const router = useRouter();
   const { addToast } = useToast();
-  const [chamados, setChamados] = useState<Chamado[]>([]);
+  const [chamados, setChamados] = useState<ChamadoAdmin[]>([]);
   const [loading, setLoading] = useState(true);
-  const [chamadoSelecionado, setChamadoSelecionado] = useState<Chamado | null>(null);
+  const [chamadoSelecionado, setChamadoSelecionado] = useState<ChamadoAdmin | null>(null);
   const [adminName, setAdminName] = useState<string>('TI');
-  const [concluidosHoje, setConcluidosHoje] = useState<Chamado[]>([]);
+  const [concluidosHoje, setConcluidosHoje] = useState<ChamadoAdmin[]>([]);
   const [contadoresNaoLidos, setContadoresNaoLidos] = useState<ContadoresNaoLidos>({});
 
   const fetchChamados = useCallback(async () => {
@@ -44,6 +45,9 @@ export default function Dashboard() {
       setChamados(abertos);
       setConcluidosHoje(concluidos);
       setContadoresNaoLidos(contadores);
+      setChamadoSelecionado(atual => atual
+        ? [...abertos, ...concluidos].find(c => c.id === atual.id) ?? null
+        : null);
     } catch (error) {
       console.error('Erro ao buscar chamados:', error);
     } finally {
@@ -126,6 +130,14 @@ export default function Dashboard() {
           if (payload.eventType === 'INSERT') {
             playNotificationSound();
           }
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const atualizadoRealtime = payload.new as ChamadoAdmin;
+            setChamadoSelecionado(prev =>
+              prev && prev.id === atualizadoRealtime.id
+                ? { ...prev, ...atualizadoRealtime }
+                : prev
+            );
+          }
         }
       )
       .on(
@@ -141,6 +153,11 @@ export default function Dashboard() {
             }));
           }
         }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'chamado_analises_ia' },
+        () => { void fetchChamados(); }
       )
       .subscribe();
 
@@ -197,6 +214,28 @@ export default function Dashboard() {
       };
     });
   }, []);
+
+  const sincronizarChamadoAtualizado = useCallback((atualizado: ChamadoAdmin) => {
+    setChamadoSelecionado(prev => (prev && prev.id === atualizado.id ? { ...prev, ...atualizado } : prev));
+    setChamados(prev => prev.map(c => (c.id === atualizado.id ? { ...c, ...atualizado } : c)));
+  }, []);
+
+  const handleGerarSugestaoIa = useCallback(async (id: string) => {
+    try {
+      const atualizado = await gerarSugestaoIaChamado(id);
+      sincronizarChamadoAtualizado(atualizado);
+      if (atualizado.ia_status !== 'concluida') {
+        addToast('Não foi possível gerar a sugestão neste momento.', 'error');
+      } else {
+        addToast('Sugestão da IA gerada com sucesso.', 'success');
+      }
+      return atualizado;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Não foi possível gerar a sugestão neste momento.';
+      addToast(message, 'error');
+      throw error;
+    }
+  }, [addToast, sincronizarChamadoAtualizado]);
 
   // Separação dos chamados nas colunas do Kanban
   const pendentes = chamados.filter(c => c.status === 'Pendente');
@@ -343,11 +382,13 @@ export default function Dashboard() {
           onPrioridade={async (id, prioridade) => {
             try {
               const atualizado = await alterarPrioridadeChamado(id, prioridade);
-              setChamadoSelecionado(atualizado);
+              sincronizarChamadoAtualizado(atualizado);
               await fetchChamados();
               addToast('Prioridade e prazo atualizados.', 'success');
             } catch (e) { addToast(e instanceof Error ? e.message : 'Erro ao alterar prioridade.', 'error'); }
           }}
+          onGerarSugestaoIa={handleGerarSugestaoIa}
+          onChamadoAtualizado={sincronizarChamadoAtualizado}
           unreadCount={contadoresNaoLidos[chamadoSelecionado.id] || 0}
           onUnreadCleared={() => handleUnreadCleared(chamadoSelecionado.id)}
         />

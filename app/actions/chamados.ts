@@ -8,9 +8,13 @@ import { z } from 'zod';
 import { extractFirstName } from '@/lib/utils';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
-import { Chamado } from '@/types/database';
+import { AnaliseIaChamado, Chamado, ChamadoAdmin } from '@/types/database';
 import { enviarEmailDeAtualizacao } from '@/lib/chamadoEmail';
 import { PRIORIDADES, type PoliticaSla, type Prioridade } from '@/lib/sla';
+import {
+  analisarChamadoComIa,
+  type SupabaseIaClient,
+} from '@/lib/iaChamados';
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -38,6 +42,146 @@ async function getSupabase() {
 }
 
 type SupabaseServerClient = Awaited<ReturnType<typeof getSupabase>>;
+
+function tentarRevalidar(caminho: string) {
+  try {
+    revalidatePath(caminho);
+  } catch {
+    // Ignorar se executado fora de contexto de requisição Next.js (ex: suíte de testes)
+  }
+}
+
+const CHAMADO_PUBLICO_SELECT =
+  'id, solicitante, local, categoria, descricao, status, resolucao, data_criacao, data_resolucao, responsavel, tempo_gasto, anexo_url, user_id, prioridade, sla_prazo_horas, sla_vence_em, origem, email_remetente, email_assunto, email_message_id, email_original_path';
+
+/**
+ * Filtra qualquer objeto de chamado para conter exclusivamente os campos públicos
+ * visíveis ao solicitante, removendo informações internas da análise de IA e de controle de trava.
+ */
+function sanitizarChamadoPublico(
+  registro: Record<string, unknown> | Chamado | ChamadoAdmin
+): Chamado {
+  const origem = registro as Record<string, unknown>;
+  const publico: Chamado = {
+    id: String(origem.id ?? ''),
+    solicitante: String(origem.solicitante ?? ''),
+    local: String(origem.local ?? ''),
+    categoria: String(origem.categoria ?? ''),
+    descricao: String(origem.descricao ?? ''),
+    status: String(origem.status ?? 'Pendente'),
+    resolucao: (origem.resolucao as string | null) ?? null,
+    data_criacao: String(origem.data_criacao ?? ''),
+    data_resolucao: (origem.data_resolucao as string | null) ?? null,
+    responsavel: (origem.responsavel as string | null) ?? null,
+    tempo_gasto: (origem.tempo_gasto as string | null) ?? null,
+  };
+
+  if ('anexo_url' in origem) publico.anexo_url = (origem.anexo_url as string | null) ?? null;
+  if ('user_id' in origem && typeof origem.user_id === 'string') publico.user_id = origem.user_id;
+  if ('avaliacao' in origem) publico.avaliacao = (origem.avaliacao as Chamado['avaliacao']) ?? null;
+  if ('prioridade' in origem) publico.prioridade = (origem.prioridade as Chamado['prioridade']) ?? null;
+  if ('sla_prazo_horas' in origem) publico.sla_prazo_horas = (origem.sla_prazo_horas as number | null) ?? null;
+  if ('sla_vence_em' in origem) publico.sla_vence_em = (origem.sla_vence_em as string | null) ?? null;
+  if ('origem' in origem && (origem.origem === 'portal' || origem.origem === 'email')) {
+    publico.origem = origem.origem;
+  }
+  if ('email_remetente' in origem) publico.email_remetente = (origem.email_remetente as string | null) ?? null;
+  if ('email_assunto' in origem) publico.email_assunto = (origem.email_assunto as string | null) ?? null;
+  if ('email_message_id' in origem) publico.email_message_id = (origem.email_message_id as string | null) ?? null;
+  if ('email_original_path' in origem) publico.email_original_path = (origem.email_original_path as string | null) ?? null;
+
+  return publico;
+}
+
+function obterClienteIaServidor(fallback: SupabaseServerClient): SupabaseIaClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (url && serviceKey) {
+    try {
+      const adminClient = createClient(url, serviceKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      if (adminClient && typeof adminClient.rpc === 'function') {
+        return adminClient as unknown as SupabaseIaClient;
+      }
+    } catch {
+      // Fallback para o cliente SSR da sessão
+    }
+  }
+  return fallback as unknown as SupabaseIaClient;
+}
+
+async function enriquecerChamadosComAnaliseIa(
+  supabase: SupabaseServerClient,
+  chamadosLista: ChamadoAdmin[]
+): Promise<ChamadoAdmin[]> {
+  if (chamadosLista.length === 0) return chamadosLista;
+
+  try {
+    const tabelaAnalises = supabase.from('chamado_analises_ia') as unknown as {
+      select?: (cols?: string) => {
+        in?: (col: string, vals: string[]) => PromiseLike<{ data: unknown; error: unknown }>;
+        eq?: (col: string, val: string) => {
+          maybeSingle?: () => PromiseLike<{ data: unknown; error: unknown }>;
+        };
+      };
+    };
+
+    if (!tabelaAnalises || typeof tabelaAnalises.select !== 'function') {
+      return chamadosLista;
+    }
+
+    const consulta = tabelaAnalises.select('*');
+    const ids = chamadosLista.map((c) => c.id).filter(Boolean);
+    const mapaAnalises = new Map<string, AnaliseIaChamado>();
+
+    if (typeof consulta.in === 'function') {
+      const { data, error } = await consulta.in('chamado_id', ids);
+      if (!error && Array.isArray(data)) {
+        for (const item of data as AnaliseIaChamado[]) {
+          if (item && item.chamado_id) {
+            mapaAnalises.set(item.chamado_id, item);
+          }
+        }
+      }
+    } else if (ids.length === 1 && typeof consulta.eq === 'function') {
+      const eqChain = consulta.eq('chamado_id', ids[0]);
+      if (eqChain && typeof eqChain.maybeSingle === 'function') {
+        const { data, error } = await eqChain.maybeSingle();
+        if (!error && data && typeof data === 'object') {
+          const item = data as AnaliseIaChamado;
+          if (item.chamado_id) {
+            mapaAnalises.set(item.chamado_id, item);
+          }
+        }
+      }
+    }
+
+    if (mapaAnalises.size === 0) {
+      return chamadosLista;
+    }
+
+    return chamadosLista.map((chamado) => {
+      const analise = mapaAnalises.get(chamado.id);
+      if (!analise) return chamado;
+      return {
+        ...chamado,
+        ia_status: analise.ia_status,
+        ia_prioridade_sugerida: analise.ia_prioridade_sugerida,
+        ia_justificativa: analise.ia_justificativa,
+        ia_sugestao_atendimento: analise.ia_sugestao_atendimento,
+        ia_confianca: analise.ia_confianca,
+        ia_modelo: analise.ia_modelo,
+        ia_analisado_em: analise.ia_analisado_em,
+        ia_execucao_id: analise.ia_execucao_id,
+        ia_iniciada_em: analise.ia_iniciada_em,
+        ia_trava_ate: analise.ia_trava_ate,
+      };
+    });
+  } catch {
+    return chamadosLista;
+  }
+}
 
 function adicionarUrlsPublicasDosAnexos(
   supabase: SupabaseServerClient,
@@ -251,6 +395,7 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
       userId = userData.user.id;
     }
 
+    // Ignora qualquer prioridade enviada pelo solicitante para impedir manipulação
     const payload = {
       prioridade: null,
       solicitante: dadosValidados.solicitante,
@@ -265,7 +410,7 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
     const { data, error } = await supabase
       .from('chamados')
       .insert([payload])
-      .select()
+      .select(CHAMADO_PUBLICO_SELECT)
       .single();
 
     if (error) {
@@ -273,7 +418,27 @@ export async function abrirChamado(dados: Omit<Chamado, 'id' | 'status' | 'resol
       throw error;
     }
 
-    return data as Chamado;
+    let chamadoRetorno = sanitizarChamadoPublico(data as unknown as Record<string, unknown>);
+
+    try {
+      const resultadoIa = await analisarChamadoComIa(
+        chamadoRetorno.id,
+        obterClienteIaServidor(supabase)
+      );
+      if (resultadoIa?.chamado) {
+        chamadoRetorno = sanitizarChamadoPublico({
+          ...chamadoRetorno,
+          prioridade: resultadoIa.chamado.prioridade ?? chamadoRetorno.prioridade,
+          sla_prazo_horas: resultadoIa.chamado.sla_prazo_horas ?? chamadoRetorno.sla_prazo_horas,
+          sla_vence_em: resultadoIa.chamado.sla_vence_em ?? chamadoRetorno.sla_vence_em,
+        });
+      }
+    } catch {
+      // Falha na análise de IA nunca pode impedir a abertura do chamado
+    }
+
+    tentarRevalidar('/adm');
+    return chamadoRetorno;
   } catch (error) {
     console.error('Erro em abrirChamado:', error);
     const message = error instanceof Error ? error.message : 'Erro ao abrir chamado';
@@ -299,20 +464,71 @@ export async function salvarPoliticasSla(politicas: PoliticaSla[]) {
   const supabase = await getSupabase();
   const { error } = await supabase.from('sla_politicas').upsert(dados, { onConflict: 'prioridade' });
   if (error) throw new Error('Não foi possível salvar os prazos de SLA.');
-  revalidatePath('/adm/sla');
+  tentarRevalidar('/adm/sla');
 }
 
-export async function alterarPrioridadeChamado(id: string, prioridade: Prioridade) {
+export async function alterarPrioridadeChamado(id: string, prioridade: Prioridade): Promise<ChamadoAdmin> {
   await requireAdmin();
   z.string().uuid().parse(id);
   z.enum(PRIORIDADES).parse(prioridade);
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('chamados').update({ prioridade })
-    .eq('id', id).neq('status', 'Concluído').select().maybeSingle();
+  const { data, error } = await supabase
+    .from('chamados')
+    .update({ prioridade, prioridade_origem: 'manual' })
+    .eq('id', id)
+    .neq('status', 'Concluído')
+    .select()
+    .maybeSingle();
   if (error) throw new Error('Não foi possível alterar a prioridade. Verifique se o prazo está configurado.');
   if (!data) throw new Error('Chamado não encontrado ou já concluído.');
-  revalidatePath('/adm');
-  return data as Chamado;
+  const [chamado] = await enriquecerChamadosComAnaliseIa(supabase, [data as ChamadoAdmin]);
+  adicionarUrlsPublicasDosAnexos(supabase, [chamado]);
+  tentarRevalidar('/adm');
+  return chamado;
+}
+
+export async function gerarSugestaoIaChamado(chamadoId: string): Promise<ChamadoAdmin> {
+  await requireAdmin();
+  const idValidado = z.string().uuid('ID inválido.').parse(chamadoId);
+
+  const supabase = await getSupabase();
+  const resultado = await analisarChamadoComIa(
+    idValidado,
+    obterClienteIaServidor(supabase)
+  );
+
+  if (resultado.motivo === 'nao_encontrado') {
+    throw new Error('Chamado não encontrado.');
+  }
+
+  if (resultado.motivo === 'chamado_concluido') {
+    throw new Error('Não é possível analisar um chamado já concluído.');
+  }
+
+  if (resultado.motivo === 'em_andamento') {
+    throw new Error('A análise deste chamado já está em andamento.');
+  }
+
+  if (resultado.motivo === 'erro_trava') {
+    throw new Error('Não foi possível iniciar a análise do chamado.');
+  }
+
+  if (resultado.motivo === 'erro_persistencia') {
+    throw new Error('Não foi possível salvar o resultado da análise.');
+  }
+
+  if (resultado.motivo === 'execucao_substituida') {
+    throw new Error('A análise foi substituída por uma tentativa mais recente.');
+  }
+
+  if (!resultado.chamado) {
+    throw new Error('Não foi possível concluir a análise do chamado.');
+  }
+
+  const chamadoFinal = resultado.chamado;
+  adicionarUrlsPublicasDosAnexos(supabase, [chamadoFinal]);
+  tentarRevalidar('/adm');
+  return chamadoFinal;
 }
 
 export async function obterEmailOriginal(id: string) {
@@ -336,7 +552,7 @@ export async function obterEmailOriginal(id: string) {
  * Busca todos os chamados que ainda não foram concluídos (status 'Pendente' ou 'Em Andamento').
  * @returns Lista de chamados em aberto ordenados pelo mais antigo.
  */
-export async function obterChamadosAbertos() {
+export async function obterChamadosAbertos(): Promise<ChamadoAdmin[]> {
   try {
     await requireAdmin();
     const supabase = await getSupabase();
@@ -350,7 +566,7 @@ export async function obterChamadosAbertos() {
       throw error;
     }
 
-    const chamados = data as Chamado[];
+    const chamados = await enriquecerChamadosComAnaliseIa(supabase, (data || []) as ChamadoAdmin[]);
     adicionarUrlsPublicasDosAnexos(supabase, chamados);
 
     return chamados;
@@ -366,7 +582,7 @@ export async function obterChamadosAbertos() {
  * Útil para acompanhamento diário no painel de chamados.
  * @returns Lista de chamados concluídos hoje.
  */
-export async function obterChamadosConcluidosHoje() {
+export async function obterChamadosConcluidosHoje(): Promise<ChamadoAdmin[]> {
   try {
     await requireAdmin();
     const supabase = await getSupabase();
@@ -385,7 +601,7 @@ export async function obterChamadosConcluidosHoje() {
       throw error;
     }
 
-    const chamados = data as Chamado[];
+    const chamados = (data || []) as ChamadoAdmin[];
     adicionarUrlsPublicasDosAnexos(supabase, chamados);
 
     return chamados;
@@ -553,7 +769,7 @@ export async function assumirChamado(id: string) {
     }
     if (!data) throw new Error('O chamado já foi aceito ou não está mais pendente.');
 
-    const chamado = data as Chamado;
+    const [chamado] = await enriquecerChamadosComAnaliseIa(supabase, [data as ChamadoAdmin]);
     await enviarEmailDeAtualizacao(chamado, 'assumido');
     return chamado;
   } catch (error) {
@@ -592,7 +808,7 @@ export async function deletarChamado(id: string) {
  * Busca todos os chamados abertos pelo usuário logado atualmente.
  * Usado na tela "Meus Chamados".
  */
-export async function obterMeusChamados() {
+export async function obterMeusChamados(): Promise<Chamado[]> {
   try {
     const supabase = await getSupabase();
     
@@ -605,7 +821,7 @@ export async function obterMeusChamados() {
 
     const { data, error } = await supabase
       .from('chamados')
-      .select('*')
+      .select(CHAMADO_PUBLICO_SELECT)
       .eq('user_id', userId)
       .order('data_criacao', { ascending: false });
 
@@ -617,7 +833,9 @@ export async function obterMeusChamados() {
       throw error;
     }
 
-    const chamados = data as Chamado[];
+    const chamados = ((data || []) as unknown as Array<Record<string, unknown>>).map((item) =>
+      sanitizarChamadoPublico(item)
+    );
     adicionarUrlsPublicasDosAnexos(supabase, chamados);
 
     return chamados;
